@@ -323,6 +323,7 @@
 			['Coincidencias', a.coincidencias],
 			['Fragmentos', a.fragmentos && a.fragmentos.length ? a.fragmentos.join('   ') : null],
 			['Detalle', a.detalle],
+			['ID de clave', a.clave_id],
 			['Nota', a.nota],
 			['Caso', a.caso],
 			['Solicitante', a.solicitante],
@@ -460,47 +461,134 @@
 				},
 			}))
 
-		// Reglas
-		const filas = estado.reglas.map((r) => {
-			let celdaAccion
-			if (!r.puede_enmascarar) {
-				celdaAccion = el('span', { class: 'gsitg-nota', text: 'Solo alerta' })
-			} else {
-				const sel = seleccion(r.accion, [['alertar', 'Alertar'], ['enmascarar', 'Ocultar y alertar']],
-					{ 'aria-label': 'Acción de ' + r.nombre, disabled: !estado.clave_publica && r.accion === 'alertar' })
-				sel.addEventListener('change', async () => {
-					const nueva = sel.value
-					const texto = nueva === 'enmascarar'
-						? '«' + r.nombre + '»: desde ahora el dato se ocultará en Talk antes de que lo vean los participantes, y el autor recibirá un aviso.\n\n¿Ya se informó a los usuarios y lo aprobó Consultoría Jurídica?'
-						: '«' + r.nombre + '»: el dato dejará de ocultarse y solo se generará una alerta. ¿Continuar?'
-					if (!window.confirm(texto)) {
-						sel.value = r.accion
-						return
-					}
-					try {
-						await api('regla', { metodo: 'POST', datos: { id: r.id, accion: nueva } })
-						r.accion = nueva
-						aviso('Regla «' + r.nombre + '» actualizada.')
-						await cargarEstado()
-						dibujarConfig()
-					} catch (e) {
-						sel.value = r.accion
-						aviso(e.message, 'error')
-					}
-				})
-				celdaAccion = sel
+		// Reglas personalizables para el alcance actual de Talk.
+		const editorRegla = el('div', { class: 'gsitg-editor-regla', hidden: true })
+		const cerrarEditor = () => { editorRegla.hidden = true; editorRegla.replaceChildren() }
+		const abrirEditor = (r = null) => {
+			const editando = Boolean(r)
+			const campo = (id, etiqueta, control) => el('div', { class: 'gsitg-campo' },
+				el('label', { for: id, class: 'gsitg-etiqueta', text: etiqueta }), control)
+			const nombre = el('input', { id: 'gsitg-r-nombre', type: 'text', maxlength: '120', required: true, value: r?.nombre || '' })
+			const id = el('input', { id: 'gsitg-r-id', type: 'text', maxlength: '40', required: true, value: r?.id || '', disabled: editando, pattern: '[a-z0-9_]+' })
+			const descripcion = el('input', { id: 'gsitg-r-desc', type: 'text', maxlength: '240', value: r?.descripcion || '', placeholder: 'Contexto para quienes revisen la alerta' })
+			const tipo = seleccion(r?.tipo || 'palabras', [['palabras', 'Lista de palabras o frases'], ['regex', 'Expresión regular']], { id: 'gsitg-r-tipo' })
+			const definicion = el('textarea', { id: 'gsitg-r-def', rows: '5', required: true, placeholder: 'Una palabra o frase por línea' })
+			definicion.value = r ? (r.tipo === 'palabras' ? r.palabras.join('\n') : r.definicion) : ''
+			const coincidencia = seleccion(r?.coincidencia || 'cualquiera', [['cualquiera', 'Cualquiera de las frases'], ['todas', 'Todas las frases']], { id: 'gsitg-r-coincidencia' })
+			const umbral = el('input', { id: 'gsitg-r-umbral', type: 'number', min: '1', max: '100', value: String(r?.umbral || 1) })
+			const severidad = seleccion(r?.severidad || 'media', [['baja', 'Baja'], ['media', 'Media'], ['alta', 'Alta'], ['critica', 'Crítica']], { id: 'gsitg-r-sev' })
+			const accion = seleccion(r?.accion || 'alertar', [['alertar', 'Solo alertar'], ['enmascarar', 'Ocultar coincidencia y alertar']], { id: 'gsitg-r-accion' })
+			const mascara = seleccion(r?.mascara || 'total', [['total', 'Reemplazar completamente'], ['parcial', 'Ocultar parte'], ['digitos', 'Enmascarar dígitos']], { id: 'gsitg-r-mascara' })
+			const validarLuhn = el('input', { id: 'gsitg-r-luhn', type: 'checkbox' }); validarLuhn.checked = r?.validar === 'luhn'
+			const excluirDominios = el('input', { id: 'gsitg-r-dominios', type: 'checkbox' }); excluirDominios.checked = r?.excluir_dominios_institucionales ?? false
+			const reemplazo = el('input', { id: 'gsitg-r-reemplazo', type: 'text', maxlength: '120', value: r?.reemplazo || '', placeholder: '[dato oculto]' })
+			const habilitada = el('input', { id: 'gsitg-r-enabled', type: 'checkbox' }); habilitada.checked = r?.habilitada ?? true
+			const eventoChecks = [['mensaje', 'Mensajes'], ['edicion', 'Ediciones'], ['archivo', 'Archivos compartidos']].map(([v, t]) => {
+				const check = el('input', { type: 'checkbox', value: v }); check.checked = r ? r.eventos.includes(v) : true
+				return el('label', { class: 'gsitg-check' }, check, ' ' + t)
+			})
+			const ayuda = el('p', { class: 'gsitg-nota' })
+			const actualizarTipo = () => {
+				const palabras = tipo.value === 'palabras'
+				coincidencia.parentElement.hidden = !palabras
+				definicion.placeholder = palabras ? 'Una palabra o frase por línea (hasta 100)' : 'Patrón PCRE, por ejemplo: \\b[A-Z]{3}-\\d{6}\\b'
+				umbral.parentElement.hidden = palabras
+				const puedeOcultar = tipo.value === 'regex'
+				accion.querySelector('option[value="enmascarar"]').disabled = !puedeOcultar || !estado.clave_publica
+				if (!puedeOcultar && accion.value === 'enmascarar') accion.value = 'alertar'
+				mascara.parentElement.hidden = accion.value !== 'enmascarar'
+				validarLuhn.parentElement.hidden = !puedeOcultar
+				excluirDominios.parentElement.hidden = !puedeOcultar
+				reemplazo.parentElement.hidden = accion.value !== 'enmascarar' || mascara.value !== 'total'
+				ayuda.textContent = palabras
+					? 'Las frases se comparan sin distinguir mayúsculas ni acentos. “Todas” exige que cada frase aparezca en el mismo texto.'
+					: 'La expresión se ejecuta sobre cada evento seleccionado. El umbral cuenta coincidencias en un solo texto.'
 			}
-			return el('tr', {},
-				el('td', {}, el('div', { text: r.nombre }), el('code', { class: 'gsitg-id', text: r.id })),
-				el('td', {}, insignia(r.severidad)),
-				el('td', { class: 'gsitg-num', text: String(r.alertas_7_dias) }),
-				el('td', {}, celdaAccion))
-		})
+			tipo.addEventListener('change', actualizarTipo)
+			accion.addEventListener('change', actualizarTipo)
+			mascara.addEventListener('change', actualizarTipo)
+			const guardar = el('button', { type: 'submit', class: 'primary', text: editando ? 'Guardar cambios' : 'Crear regla' })
+			const form = el('form', { class: 'gsitg-form-regla' },
+				el('h4', { text: editando ? 'Editar regla' : 'Nueva regla' }),
+				el('div', { class: 'gsitg-grid-regla' },
+					campo('gsitg-r-nombre', 'Nombre visible', nombre),
+					campo('gsitg-r-id', 'Identificador', id),
+					campo('gsitg-r-desc', 'Descripción opcional', descripcion),
+					campo('gsitg-r-tipo', 'Cómo detectar', tipo),
+					campo('gsitg-r-def', 'Frases o patrón', definicion),
+					campo('gsitg-r-coincidencia', 'Coincidencia de frases', coincidencia),
+					campo('gsitg-r-umbral', 'Coincidencias mínimas por evento', umbral),
+					campo('gsitg-r-sev', 'Severidad', severidad),
+					campo('gsitg-r-accion', 'Acción', accion),
+					campo('gsitg-r-mascara', 'Tipo de ocultamiento', mascara),
+					campo('gsitg-r-reemplazo', 'Texto de reemplazo (opcional)', reemplazo),
+					el('div', { class: 'gsitg-campo' }, el('label', { class: 'gsitg-check' }, validarLuhn, ' Validar con algoritmo Luhn (tarjetas)')),
+					el('div', { class: 'gsitg-campo' }, el('label', { class: 'gsitg-check' }, excluirDominios, ' Excluir dominios institucionales'))),
+				el('fieldset', { class: 'gsitg-eventos' }, el('legend', { text: 'Aplicar a' }), eventoChecks),
+				el('label', { class: 'gsitg-check' }, habilitada, ' Regla habilitada'), ayuda,
+				el('div', { class: 'gsitg-fila-form' }, guardar,
+					el('button', { type: 'button', text: 'Cancelar', onclick: cerrarEditor })))
+			id.addEventListener('input', () => { id.value = id.value.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40) })
+			if (!editando) nombre.addEventListener('input', () => {
+				if (!id.dataset.tocado) id.value = nombre.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
+			})
+			id.addEventListener('change', () => { id.dataset.tocado = '1' })
+			form.addEventListener('submit', async (ev) => {
+				ev.preventDefault()
+				const esPalabras = tipo.value === 'palabras'
+				const expresiones = esPalabras ? lineas(definicion.value) : definicion.value.trim()
+				const eventos = eventoChecks.filter((x) => x.querySelector('input').checked).map((x) => x.querySelector('input').value)
+				if (!form.reportValidity()) return
+				if (!eventos.length || (esPalabras && !expresiones.length)) { aviso('Seleccione al menos un evento e indique las frases.', 'error'); return }
+				const regla = {
+					id: editando ? r.id : id.value, nombre: nombre.value.trim(), descripcion: descripcion.value.trim(),
+					descripcion_usuario: r?.descripcion_usuario || nombre.value.trim().toLowerCase(),
+					tipo: tipo.value, severidad: severidad.value, accion: accion.value, habilitada: habilitada.checked,
+					eventos, umbral: Number(umbral.value),
+					...(esPalabras
+						? { palabras: expresiones, coincidencia: coincidencia.value }
+						: { patron: expresiones, validar: validarLuhn.checked ? 'luhn' : null, excluir_dominios_institucionales: excluirDominios.checked,
+							mascara: mascara.value,
+							reemplazo: mascara.value === 'total' && reemplazo.value ? reemplazo.value : null }),
+				}
+				if (accion.value === 'enmascarar' && !window.confirm('La regla ocultará coincidencias antes de que aparezcan en Talk. Confirme que esto fue comunicado y aprobado.')) return
+				try {
+					await api('guardarRegla', { metodo: 'POST', datos: { regla, id_original: r?.id || '' } })
+					aviso('Regla «' + regla.nombre + '» guardada.')
+					await cargarEstado(); dibujarConfig()
+				} catch (e) { aviso(e.message, 'error') }
+			})
+			editorRegla.replaceChildren(form)
+			editorRegla.hidden = false
+			actualizarTipo()
+		}
+		const filas = estado.reglas.map((r) => el('tr', {},
+			el('td', {}, el('strong', { text: r.nombre }), el('br'), el('code', { class: 'gsitg-id', text: r.id }),
+				r.descripcion ? el('p', { class: 'gsitg-nota', text: r.descripcion }) : null,
+				el('p', { class: 'gsitg-nota', text: (r.habilitada ? 'Habilitada' : 'Deshabilitada') + ' · ' + r.eventos.join(', ') })),
+			el('td', {}, insignia(r.severidad)),
+			el('td', { class: 'gsitg-num', text: String(r.alertas_7_dias) }),
+			el('td', {},
+				el('button', { type: 'button', text: 'Editar', onclick: () => abrirEditor(r) }), ' ',
+				el('button', { type: 'button', text: r.habilitada ? 'Deshabilitar' : 'Habilitar', onclick: async () => {
+					try {
+						await api('guardarRegla', { metodo: 'POST', datos: { regla: { ...r, habilitada: !r.habilitada, patron: r.definicion,
+							validar: r.validar, excluir_dominios_institucionales: r.excluir_dominios_institucionales }, id_original: r.id } })
+						await cargarEstado(); dibujarConfig(); aviso('Estado de regla actualizado.')
+					} catch (e) { aviso(e.message, 'error') }
+				} }), ' ',
+				el('button', { type: 'button', text: 'Eliminar', onclick: async () => {
+					if (!window.confirm('¿Eliminar la regla «' + r.nombre + '»?')) return
+					try { await api('eliminarRegla', { metodo: 'POST', datos: { id: r.id } }); await cargarEstado(); dibujarConfig(); aviso('Regla eliminada.') }
+					catch (e) { aviso(e.message, 'error') }
+				} }))))
 		const cajaReglas = tarjeta('Reglas',
-			'«Ocultar» solo está disponible en las reglas que detectan un dato concreto (cuentas, tarjetas, credenciales, cédulas). Las de palabras clave siempre solo alertan. Para editar patrones o palabras, use occ gsi-talk-guard:reglas:exportar / importar.',
+			'Las reglas se ejecutan en Nextcloud Talk y generan alertas locales. Se admite coincidencia por frases o expresiones regulares, con alcance por tipo de evento. El ocultamiento requiere una expresión regular y una clave de evidencias configurada.',
+			el('button', { type: 'button', class: 'primary', text: 'Crear regla', onclick: () => abrirEditor() }),
+			editorRegla,
 			el('div', { class: 'gsitg-tabla-envoltura' },
 				el('table', { class: 'gsitg-tabla' },
-					el('thead', {}, el('tr', {}, ['Regla', 'Severidad', 'Alertas (7 días)', 'Acción'].map((t) => el('th', { scope: 'col', text: t })))),
+					el('thead', {}, el('tr', {}, ['Regla', 'Severidad', 'Alertas (7 días)', 'Acciones'].map((t) => el('th', { scope: 'col', text: t })))),
 					el('tbody', {}, filas))))
 
 		p.replaceChildren(cajaModo, cajaAlcance, cajaDominios, cajaReglas)
@@ -513,15 +601,17 @@
 	function dibujarProbar() {
 		const p = panel('probar')
 		const texto = el('textarea', { rows: '4', placeholder: 'Escriba un mensaje de ejemplo, por ejemplo: la cuenta es 0102-0000-00-0000000019', 'aria-label': 'Texto a probar' })
+		const evento = seleccion('mensaje', [['mensaje', 'Mensaje nuevo'], ['edicion', 'Edición'], ['archivo', 'Archivo compartido']], { 'aria-label': 'Tipo de evento' })
 		const resultado = el('div', { class: 'gsitg-resultado', 'aria-live': 'polite' })
 		p.replaceChildren(
-			tarjeta('Probar reglas', 'El texto no se envía a Talk ni genera alertas. Use solo datos ficticios.',
+			tarjeta('Probar reglas', 'El texto no se envía a Talk ni genera alertas. Use solo datos ficticios. Seleccione el tipo de evento para probar su alcance.',
 				texto,
+				evento,
 				el('button', {
 					type: 'button', class: 'primary', text: 'Probar',
 					onclick: async () => {
 						try {
-							const r = await api('probar', { metodo: 'POST', datos: { texto: texto.value } })
+							const r = await api('probar', { metodo: 'POST', datos: { texto: texto.value, evento: evento.value } })
 							dibujarResultado(resultado, r)
 						} catch (e) {
 							aviso(e.message, 'error')

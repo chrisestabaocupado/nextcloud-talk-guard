@@ -78,14 +78,34 @@ class MotorReglas {
 		if (!isset($datos['reglas']) || !is_array($datos['reglas'])) {
 			throw new \InvalidArgumentException('Falta la lista "reglas".');
 		}
+		if (count($datos['reglas']) > 200) {
+			throw new \InvalidArgumentException('El máximo permitido es de 200 reglas.');
+		}
 
 		$reglas = [];
 		$ids = [];
 		foreach ($datos['reglas'] as $i => $r) {
+			if (!is_array($r)) {
+				throw new \InvalidArgumentException('La regla #' . $i . ' debe ser un objeto.');
+			}
 			$donde = 'regla ' . ($r['id'] ?? '#' . $i);
 			foreach (['id', 'nombre', 'tipo', 'severidad'] as $campo) {
 				if (!isset($r[$campo]) || !is_string($r[$campo]) || $r[$campo] === '') {
 					throw new \InvalidArgumentException("$donde: falta el campo \"$campo\".");
+				}
+			}
+			if (isset($r['descripcion']) && !is_string($r['descripcion'])) {
+				throw new \InvalidArgumentException("$donde: la descripción debe ser texto.");
+			}
+			if (mb_strlen($r['nombre']) > 120 || mb_strlen($r['descripcion'] ?? '') > 240) {
+				throw new \InvalidArgumentException("$donde: nombre o descripción demasiado largos.");
+			}
+			if (trim($r['nombre']) === '') {
+				throw new \InvalidArgumentException("$donde: el nombre no puede estar vacío.");
+			}
+			foreach (['habilitada', 'excluir_dominios_institucionales'] as $campoBooleano) {
+				if (isset($r[$campoBooleano]) && !is_bool($r[$campoBooleano])) {
+					throw new \InvalidArgumentException("$donde: $campoBooleano debe ser verdadero o falso.");
 				}
 			}
 			if (isset($ids[$r['id']])) {
@@ -110,10 +130,19 @@ class MotorReglas {
 			if ($validar !== null && $validar !== 'luhn') {
 				throw new \InvalidArgumentException("$donde: validar solo admite luhn.");
 			}
+			if (isset($r['reemplazo']) && (!is_string($r['reemplazo']) || mb_strlen($r['reemplazo']) > 120)) {
+				throw new \InvalidArgumentException("$donde: el texto de reemplazo debe ser texto de hasta 120 caracteres.");
+			}
 
 			if ($r['tipo'] === 'regex') {
 				if (!isset($r['patron']) || !is_string($r['patron'])) {
 					throw new \InvalidArgumentException("$donde: falta \"patron\".");
+				}
+				if (trim($r['patron']) === '') {
+					throw new \InvalidArgumentException("$donde: el patrón no puede estar vacío.");
+				}
+				if (mb_strlen($r['patron']) > 512) {
+					throw new \InvalidArgumentException("$donde: el patrón no puede superar 512 caracteres.");
 				}
 				$patron = self::compilar($r['patron']);
 			} elseif ($r['tipo'] === 'palabras') {
@@ -123,7 +152,16 @@ class MotorReglas {
 				if ($accion === 'enmascarar') {
 					throw new \InvalidArgumentException("$donde: las reglas de palabras solo pueden alertar.");
 				}
-				$frases = array_unique(array_map(fn ($p) => self::normalizar((string)$p), $r['palabras']));
+				if (count(array_filter($r['palabras'], fn ($p) => !is_string($p))) > 0
+					|| count($r['palabras']) > 100 || max(array_map('mb_strlen', $r['palabras'])) > 128
+					|| count(array_filter($r['palabras'], fn ($p) => trim($p) !== '')) !== count($r['palabras'])) {
+					throw new \InvalidArgumentException("$donde: admita hasta 100 frases de 128 caracteres.");
+				}
+				if (!in_array($r['coincidencia'] ?? 'cualquiera', ['cualquiera', 'todas'], true)) {
+					throw new \InvalidArgumentException("$donde: coincidencia debe ser cualquiera o todas.");
+				}
+				$frasesRegla = self::frasesUnicas(array_map('strval', $r['palabras']));
+				$frases = array_map(fn ($p) => self::normalizar($p), $frasesRegla);
 				usort($frases, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
 				$alternativas = implode('|', array_map(fn ($f) => preg_quote($f, '~'), $frases));
 				$patron = '~(?<![\w])(?:' . $alternativas . ')(?![\w])~u';
@@ -140,13 +178,19 @@ class MotorReglas {
 				tipo: $r['tipo'],
 				patron: $patron,
 				severidad: $r['severidad'],
-				umbral: max(1, (int)($r['umbral'] ?? 1)),
+				umbral: self::validarUmbral($r['umbral'] ?? 1, $donde),
 				accion: $accion,
 				mascara: $mascara,
 				reemplazo: isset($r['reemplazo']) ? (string)$r['reemplazo'] : null,
 				validar: $validar,
 				excluirInstitucionales: (bool)($r['excluir_dominios_institucionales'] ?? false),
 				descripcionUsuario: (string)($r['descripcion_usuario'] ?? mb_strtolower($r['nombre'])),
+				habilitada: (bool)($r['habilitada'] ?? true),
+				eventos: self::validarEventos($r['eventos'] ?? ['mensaje', 'edicion', 'archivo'], $donde),
+				requiereTodasPalabras: ($r['coincidencia'] ?? 'cualquiera') === 'todas',
+				palabras: $r['tipo'] === 'palabras' ? self::frasesUnicas(array_map('strval', $r['palabras'])) : [],
+				definicion: $r['tipo'] === 'regex' ? $r['patron'] : '',
+				descripcion: (string)($r['descripcion'] ?? ''),
 			);
 		}
 
@@ -170,9 +214,47 @@ class MotorReglas {
 		];
 	}
 
+	/** @param mixed $eventos @return list<string> */
+	private static function validarEventos(mixed $eventos, string $donde): array {
+		$permitidos = ['mensaje', 'edicion', 'archivo'];
+		if (!is_array($eventos) || $eventos === []) {
+			throw new \InvalidArgumentException("$donde: seleccione al menos un tipo de evento.");
+		}
+		if (count(array_filter($eventos, fn ($evento) => !is_string($evento))) > 0) {
+			throw new \InvalidArgumentException("$donde: evento inválido.");
+		}
+		$salida = array_values(array_unique($eventos));
+		if (array_diff($salida, $permitidos) !== []) {
+			throw new \InvalidArgumentException("$donde: evento inválido.");
+		}
+		return $salida;
+	}
+
+	private static function validarUmbral(mixed $umbral, string $donde): int {
+		$entero = is_int($umbral) ? $umbral : (is_string($umbral) && ctype_digit($umbral) ? (int)$umbral : null);
+		if ($entero === null || $entero < 1 || $entero > 100) {
+			throw new \InvalidArgumentException("$donde: el umbral debe estar entre 1 y 100.");
+		}
+		return $entero;
+	}
+
+	/** @param list<string> $frases @return list<string> */
+	private static function frasesUnicas(array $frases): array {
+		$salida = [];
+		$vistas = [];
+		foreach ($frases as $frase) {
+			$clave = self::normalizar($frase);
+			if (!isset($vistas[$clave])) {
+				$vistas[$clave] = true;
+				$salida[] = $frase;
+			}
+		}
+		return $salida;
+	}
+
 	private static function compilar(string $patron): string {
 		// Las reglas usan sintaxis compatible con Python y PCRE; "~" como delimitador.
-		$compilado = '~' . str_replace('~', '\~', $patron) . '~u';
+		$compilado = '~(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=1000)' . str_replace('~', '\~', $patron) . '~u';
 		if (@preg_match($compilado, '') === false) {
 			throw new \InvalidArgumentException('Expresión regular inválida: ' . $patron);
 		}
@@ -190,7 +272,7 @@ class MotorReglas {
 	}
 
 	/** @return list<Hallazgo> */
-	public function evaluar(string $texto): array {
+	public function evaluar(string $texto, string $evento = 'mensaje'): array {
 		$this->cargar();
 		if ($texto === '') {
 			return [];
@@ -198,6 +280,9 @@ class MotorReglas {
 		$normal = null;
 		$hallazgos = [];
 		foreach ($this->reglas as $regla) {
+			if (!$regla->aplicaA($evento)) {
+				continue;
+			}
 			if ($regla->tipo === 'palabras') {
 				$normal ??= self::normalizar($texto);
 				$objetivo = $normal;
@@ -207,8 +292,20 @@ class MotorReglas {
 			if (preg_match_all($regla->patron, $objetivo, $m) === false) {
 				continue;
 			}
-			$coincidencias = array_values(array_filter($m[0], fn ($c) => $this->cuenta($regla, $c)));
-			if (count($coincidencias) >= $regla->umbral) {
+			if ($regla->tipo === 'palabras' && $regla->requiereTodasPalabras) {
+				$coincidencias = [];
+				foreach ($regla->palabras as $palabra) {
+					$frase = self::normalizar($palabra);
+					$patronFrase = '~(?<![\\w])' . preg_quote($frase, '~') . '(?![\\w])~u';
+					if (preg_match($patronFrase, $objetivo, $coincidencia) === 1) {
+						$coincidencias[] = $coincidencia[0];
+					}
+				}
+			} else {
+				$coincidencias = array_values(array_filter($m[0], fn ($c) => $this->cuenta($regla, $c)));
+			}
+			$umbral = $regla->requiereTodasPalabras ? count($regla->palabras) : $regla->umbral;
+			if (count($coincidencias) >= $umbral) {
 				$hallazgos[] = new Hallazgo($regla, $coincidencias);
 			}
 		}

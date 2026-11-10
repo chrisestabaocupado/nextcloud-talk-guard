@@ -3,13 +3,13 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
 	<id>gsi_talk_guard</id>
 	<name>GSI Talk Guard</name>
-	<summary>Detecta y enmascara información sensible en Nextcloud Talk</summary>
+	<summary>Reglas configurables de monitoreo y protección para Nextcloud Talk</summary>
 	<description><![CDATA[App interna de la Gerencia de Seguridad de la Información (IMCP).
 
-Analiza cada mensaje de Talk antes de guardarlo, genera alertas para Wazuh y, según la regla, enmascara datos críticos (cuentas bancarias, tarjetas, credenciales), guarda el original cifrado como evidencia y avisa al autor.
+Analiza mensajes, ediciones y archivos compartidos de Talk antes de guardarlos. Permite definir reglas de monitoreo configurables, genera alertas locales y, según la regla, puede ocultar coincidencias y guardar el original cifrado como evidencia. La integración con Wazuh/SIEM queda para una etapa posterior.
 
 Se administra desde Configuración de administración › GSI Talk Guard o con los comandos occ gsi-talk-guard:*]]></description>
-	<version>1.1.0</version>
+	<version>1.3.0</version>
 	<licence>agpl</licence>
 	<author>Gerencia de Seguridad de la Información - IMCP</author>
 	<namespace>GsiTalkGuard</namespace>

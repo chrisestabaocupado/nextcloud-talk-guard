@@ -55,17 +55,23 @@ class Guardian {
 			return;
 		}
 		$original = $mensaje->getMessage();
-		$hallazgos = $this->motor->evaluar($original);
+		$hallazgos = $this->motor->evaluar($original, 'mensaje');
 		if ($hallazgos === []) {
 			return;
 		}
 		[$texto, $enmascaradas, $nota] = $this->aplicarMascaras($sala, $original, $hallazgos);
-		if ($texto !== $original) {
+		$evidenciaId = $this->preservarAntesDeEnmascarar($sala, $mensaje, $original, $enmascaradas, $nota);
+		if ($evidenciaId === null && $enmascaradas !== []) {
+			$enmascaradas = [];
+			$texto = $original;
+			$nota = 'no se preservó evidencia: no se enmascaró';
+		}
+		if ($texto !== $original && $evidenciaId !== null) {
 			$mensaje->setMessage($texto, self::MAX_CHAT);
 		}
 		self::$pendientes[spl_object_id($mensaje)] = [
 			'original' => $original, 'hallazgos' => $hallazgos,
-			'enmascaradas' => $enmascaradas, 'nota' => $nota,
+			'enmascaradas' => $enmascaradas, 'nota' => $nota, 'evidencia_id' => $evidenciaId,
 		];
 	}
 
@@ -77,7 +83,7 @@ class Guardian {
 			return;
 		}
 		$this->reportar($sala, $mensaje, 'mensaje', (string)$mensaje->getId(),
-			$p['original'], $p['hallazgos'], $p['enmascaradas'], $p['nota']);
+			$p['original'], $p['hallazgos'], $p['enmascaradas'], $p['nota'], null, $p['evidencia_id'] ?? null);
 	}
 
 	// ==================================================================
@@ -93,18 +99,24 @@ class Guardian {
 		if (!is_string($titulo) || $titulo === '') {
 			return;
 		}
-		$hallazgos = $this->motor->evaluar($titulo);
+		$hallazgos = $this->motor->evaluar($titulo, 'archivo');
 		if ($hallazgos === []) {
 			return;
 		}
 		[$nuevo, $enmascaradas, $nota] = $this->aplicarMascaras($sala, $titulo, $hallazgos);
-		if ($nuevo !== $titulo) {
+		$evidenciaId = $this->preservarAntesDeEnmascarar($sala, $mensaje, $titulo, $enmascaradas, $nota);
+		if ($evidenciaId === null && $enmascaradas !== []) {
+			$enmascaradas = [];
+			$nuevo = $titulo;
+			$nota = 'no se preservó evidencia: no se enmascaró';
+		}
+		if ($nuevo !== $titulo && $evidenciaId !== null) {
 			$datos['parameters']['metaData']['caption'] = $nuevo;
 			$mensaje->setMessage((string)json_encode($datos), self::MAX_CHAT);
 		}
 		self::$pendientes[spl_object_id($mensaje)] = [
 			'original' => $titulo, 'hallazgos' => $hallazgos,
-			'enmascaradas' => $enmascaradas, 'nota' => $nota,
+			'enmascaradas' => $enmascaradas, 'nota' => $nota, 'evidencia_id' => $evidenciaId,
 		];
 	}
 
@@ -146,7 +158,7 @@ class Guardian {
 		]);
 		if ($p !== null) { // el texto que acompaña al archivo tuvo coincidencias
 			$this->reportar($sala, $mensaje, 'archivo', $id, $p['original'], $p['hallazgos'],
-				$p['enmascaradas'], $p['nota'], $archivo);
+				$p['enmascaradas'], $p['nota'], $archivo, $p['evidencia_id'] ?? null);
 		}
 	}
 
@@ -172,13 +184,19 @@ class Guardian {
 		} else {
 			$original = $editado->getMessage();
 		}
-		$hallazgos = $this->motor->evaluar($original);
+		$hallazgos = $this->motor->evaluar($original, 'edicion');
 		if ($hallazgos === []) {
 			return;
 		}
 
 		[$texto, $enmascaradas, $nota] = $this->aplicarMascaras($sala, $original, $hallazgos);
-		if ($texto !== $original) {
+		$evidenciaId = $this->preservarAntesDeEnmascarar($sala, $editado, $original, $enmascaradas, $nota);
+		if ($evidenciaId === null && $enmascaradas !== []) {
+			$enmascaradas = [];
+			$texto = $original;
+			$nota = 'no se preservó evidencia: no se enmascaró';
+		}
+		if ($texto !== $original && $evidenciaId !== null) {
 			// La edición ya se guardó: se reescribe de inmediato con el dato oculto.
 			if (is_array($json)) {
 				$json['parameters']['metaData']['caption'] = $texto;
@@ -189,7 +207,7 @@ class Guardian {
 			$this->comments->save($editado);
 		}
 		$this->reportar($sala, $editado, 'edicion', $idEditado . '-e' . $sistema->getId(),
-			$original, $hallazgos, $enmascaradas, $nota);
+			$original, $hallazgos, $enmascaradas, $nota, null, $evidenciaId);
 	}
 
 	// ==================================================================
@@ -234,6 +252,25 @@ class Guardian {
 		return $nuevo === $texto ? [$texto, [], null] : [$nuevo, $candidatas, null];
 	}
 
+	/** Persiste el original cifrado antes de cambiar el contenido visible. */
+	private function preservarAntesDeEnmascarar(Room $sala, IComment $mensaje, string $original,
+		array &$enmascaradas, ?string &$nota): ?string {
+		if ($enmascaradas === []) {
+			return null;
+		}
+		$id = 'ev-' . bin2hex(random_bytes(16));
+		try {
+			$this->evidencias->preparar($id, $sala->getToken(), $mensaje->getActorId(), $original);
+			return $id;
+		} catch (\Throwable $e) {
+			$this->logger->error('GSI Talk Guard: no se pudo preservar el original; se cancela el enmascaramiento: ' . $e->getMessage(),
+				['app' => Application::APP_ID]);
+			$enmascaradas = [];
+			$nota = 'no se preservó evidencia: no se enmascaró';
+			return null;
+		}
+	}
+
 	/**
 	 * Evidencia, alertas y aviso al autor.
 	 *
@@ -241,17 +278,25 @@ class Guardian {
 	 * @param list<Regla> $enmascaradas
 	 */
 	private function reportar(Room $sala, IComment $mensaje, string $evento, string $idBase,
-		string $original, array $hallazgos, array $enmascaradas, ?string $nota, ?string $archivo = null): void {
+		string $original, array $hallazgos, array $enmascaradas, ?string $nota, ?string $archivo = null,
+		?string $evidenciaId = null): void {
 		$idsEnmascaradas = array_map(fn (Regla $r) => $r->id, $enmascaradas);
 		$base = $this->base($sala, $mensaje, $evento, (string)$mensaje->getId());
 
-		$evidencia = false;
+		$evidencia = $evidenciaId;
 		$necesitaEvidencia = $enmascaradas !== [];
 		foreach ($hallazgos as $h) {
 			$necesitaEvidencia = $necesitaEvidencia
 				|| Settings::SEVERIDADES[$h->regla->severidad] >= Settings::SEVERIDADES['alta'];
 		}
-		if ($necesitaEvidencia) {
+		if ($evidenciaId !== null) {
+			try {
+				$this->evidencias->completar($evidenciaId, (int)$mensaje->getId());
+			} catch (\Throwable $e) {
+				$this->logger->error('GSI Talk Guard: no se pudo asociar el id del mensaje a la evidencia: ' . $e->getMessage(),
+					['app' => Application::APP_ID]);
+			}
+		} elseif ($necesitaEvidencia) {
 			try {
 				$evidencia = $this->evidencias->guardar($idBase, (int)$mensaje->getId(), $sala->getToken(),
 					$mensaje->getActorId(), $original);
@@ -271,7 +316,8 @@ class Guardian {
 				'coincidencias' => count($h->coincidencias),
 				'fragmentos' => $h->fragmentos(),
 				'archivo' => $archivo,
-				'evidencia' => $evidencia ? $idBase : null,
+				'evidencia' => $evidenciaId ?? ($evidencia ? $idBase : null),
+				'clave_id' => ($evidenciaId !== null || $evidencia) ? $this->settings->clavePublicaId() : null,
 				'huella_sha256' => hash('sha256', $original),
 			];
 			if ($nota !== null && $h->regla->puedeEnmascarar()) {

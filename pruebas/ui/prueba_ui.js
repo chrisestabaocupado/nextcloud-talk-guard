@@ -80,28 +80,30 @@ const verificar = (desc, cond) => {
 	const reglas = JSON.parse(reglasOriginales)
 	for (const r of reglas.reglas) if (['tarjeta', 'cuenta_bancaria'].includes(r.id)) r.accion = 'enmascarar'
 	const tmp = path.join(require('os').tmpdir(), 'gsitg-reglas-prueba.json')
-	fs.writeFileSync(tmp, JSON.stringify(reglas))
-	occ('gsi-talk-guard:reglas:importar', tmp)
-	occ('gsi-talk-guard:modo', 'normal')
-	occ('config:app:set', 'gsi_talk_guard', 'usuarios_piloto', '--value=ana.perez,luis.rojas')
-
-	// Alerta con contenido malicioso: debe mostrarse como texto, nunca ejecutarse.
 	const datos = occ('config:system:get', 'datadirectory').trim()
 	const archivo = path.join(datos, 'gsi_talk_guard', 'alertas.jsonl')
-	fs.mkdirSync(path.dirname(archivo), { recursive: true })
-	fs.appendFileSync(archivo, JSON.stringify({
+	const alertasOriginales = fs.existsSync(archivo) ? fs.readFileSync(archivo) : null
+	try {
+		fs.writeFileSync(tmp, JSON.stringify(reglas))
+		occ('gsi-talk-guard:reglas:importar', tmp)
+		occ('gsi-talk-guard:modo', 'normal')
+		occ('config:app:set', 'gsi_talk_guard', 'usuarios_piloto', '--value=ana.perez,luis.rojas')
+
+		// Alertas con contenido malicioso: deben mostrarse como texto, nunca ejecutarse.
+		fs.mkdirSync(path.dirname(archivo), { recursive: true })
+		fs.appendFileSync(archivo, JSON.stringify({
 		origen: 'talk-guard', detectado: new Date().toISOString(), alerta_id: 'prueba-xss', evento: 'mensaje',
 		regla_id: 'exfiltracion', severidad: 'media', nivel: 2, accion: 'alerta', autor: '<b>atacante</b>',
 		sala_nombre: '<img src=x onerror="window.__xss=1">Sala', participantes: ['a', 'b'],
 		fragmentos: ['<script>window.__xss=2</script>'],
-	}) + '\n')
+		}) + '\n')
 	// Y una alerta alta con evidencia, para probar el detalle.
-	fs.appendFileSync(archivo, JSON.stringify({
+		fs.appendFileSync(archivo, JSON.stringify({
 		origen: 'talk-guard', detectado: new Date().toISOString(), alerta_id: 'prueba-1-cuenta_bancaria', evento: 'mensaje',
 		regla_id: 'cuenta_bancaria', severidad: 'alta', nivel: 3, accion: 'enmascarado', autor: 'ana.perez',
 		sala_nombre: 'Finanzas', sala_tipo: 'grupo', participantes: ['ana.perez', 'luis.rojas'], num_participantes: 2,
 		fragmentos: ['0102****6789'], evidencia: 'prueba-1',
-	}) + '\n')
+		}) + '\n')
 
 	const html = await iniciarSesion()
 	const dom = new JSDOM(html, { url: BASE + '/index.php/settings/admin/gsi_talk_guard', runScripts: 'outside-only', pretendToBeVisual: true })
@@ -114,7 +116,6 @@ const verificar = (desc, cond) => {
 	const boton = (panel, texto) => [...d.querySelectorAll('[data-panel="' + panel + '"] button')].find((b) => b.textContent === texto)
 	const filas = () => [...d.querySelectorAll('#gsitg-tabla tbody tr.gsitg-fila')]
 
-	try {
 		w.eval(fs.readFileSync(JS_APP, 'utf8'))
 
 		console.log('Pestaña Alertas')
@@ -186,16 +187,26 @@ const verificar = (desc, cond) => {
 		fallas++
 		console.log('  ERROR  ' + e.message)
 	} finally {
-		if (eranPredeterminadas) {
-			occ('gsi-talk-guard:reglas:importar', '--predeterminadas')
-		} else {
-			fs.writeFileSync(tmp, reglasOriginales)
-			occ('gsi-talk-guard:reglas:importar', tmp)
+		const restaurar = (descripcion, fn) => {
+			try { fn() } catch (e) {
+				fallas++
+				console.error('No se pudo restaurar ' + descripcion + ': ' + e.message)
+			}
 		}
-		occ('gsi-talk-guard:modo', modoOriginal)
-		if (pilotoOriginal) occ('config:app:set', 'gsi_talk_guard', 'usuarios_piloto', '--value=' + pilotoOriginal)
-		else occ('config:app:delete', 'gsi_talk_guard', 'usuarios_piloto')
-		fs.unlinkSync(tmp)
+		restaurar('reglas', () => {
+			if (eranPredeterminadas) occ('gsi-talk-guard:reglas:importar', '--predeterminadas')
+			else { fs.writeFileSync(tmp, reglasOriginales); occ('gsi-talk-guard:reglas:importar', tmp) }
+		})
+		restaurar('modo', () => occ('gsi-talk-guard:modo', modoOriginal))
+		restaurar('usuarios del piloto', () => {
+			if (pilotoOriginal) occ('config:app:set', 'gsi_talk_guard', 'usuarios_piloto', '--value=' + pilotoOriginal)
+			else occ('config:app:delete', 'gsi_talk_guard', 'usuarios_piloto')
+		})
+		restaurar('alertas de prueba', () => {
+			if (alertasOriginales === null) fs.rmSync(archivo, { force: true })
+			else fs.writeFileSync(archivo, alertasOriginales)
+		})
+		restaurar('archivo temporal de reglas', () => fs.rmSync(tmp, { force: true }))
 	}
 	console.log('\nResultado: ' + ok + ' correctas, ' + fallas + ' fallas.')
 	process.exit(fallas ? 1 : 0)

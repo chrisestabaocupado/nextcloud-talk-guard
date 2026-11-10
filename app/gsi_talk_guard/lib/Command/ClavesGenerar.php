@@ -27,18 +27,19 @@ class ClavesGenerar extends Command {
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		if ($this->settings->clavePublica() !== null && !$input->getOption('forzar')) {
-			$output->writeln('<error>Ya existe una clave pública. Con --forzar se reemplaza, y las evidencias anteriores solo se podrán leer con la clave privada anterior.</error>');
+			$output->writeln('<error>Ya existe una clave pública. Use --forzar solo después de respaldar la clave privada actual; conserve las claves anteriores para leer sus evidencias.</error>');
 			return 1;
 		}
 		$privada = $this->evidencias->generarClaves();
 		$output->writeln('<info>Clave pública guardada en Nextcloud.</info>');
+		$output->writeln('ID de clave: ' . $this->settings->clavePublicaId());
 		$output->writeln('');
 		$output->writeln('CLAVE PRIVADA (cópiela ahora; no se vuelve a mostrar ni se guarda en el servidor):');
 		$output->writeln('');
 		$output->writeln('  ' . $privada);
 		$output->writeln('');
 		$output->writeln('Guárdela fuera del servidor (por ejemplo, en un gestor de contraseñas de la GSI con acceso dual).');
-		$output->writeln('Sin ella, las evidencias no se pueden leer.');
+		$output->writeln('Conserve esta clave junto con su ID. Las evidencias anteriores requieren la clave privada del ID que muestran.');
 		return 0;
 	}
 }

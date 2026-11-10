@@ -75,6 +75,7 @@ class EvidenciaLeer extends Command {
 		$output->writeln('Mensaje:     ' . $e['mensaje_id'] . ' en la sala ' . $e['sala_token']);
 		$output->writeln('Autor:       ' . $e['autor']);
 		$output->writeln('Guardada:    ' . gmdate('c', $e['creado']));
+		$output->writeln('ID de clave: ' . $e['clave_id']);
 		$output->writeln('Integridad:  ' . ($e['integra'] ? 'íntegra (SHA-256 coincide)' : '<error>NO COINCIDE</error>'));
 		$output->writeln('---');
 		$output->writeln($e['texto'], OutputInterface::OUTPUT_RAW);

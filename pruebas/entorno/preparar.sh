@@ -91,6 +91,22 @@ occ config:system:set overwrite.cli.url --value="http://127.0.0.1:$PUERTO" > /de
 occ app:enable spreed > /dev/null
 occ app:enable gsi_talk_guard > /dev/null
 
+# Entorno aislado de pruebas: activa máscaras para que la prueba de humo
+# verifique que el dato sensible realmente desaparece del mensaje.
+REGLAS_PRUEBA=$DESTINO/reglas-prueba.json
+python3 - "$REPO/app/gsi_talk_guard/config/reglas.json" "$REGLAS_PRUEBA" <<'PY'
+import json, sys
+from pathlib import Path
+rules = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+for rule in rules['reglas']:
+    if rule['id'] in ('cuenta_bancaria', 'tarjeta'):
+        rule['accion'] = 'enmascarar'
+Path(sys.argv[2]).write_text(json.dumps(rules, ensure_ascii=False), encoding='utf-8')
+PY
+occ gsi-talk-guard:reglas:importar "$REGLAS_PRUEBA" > /dev/null
+rm -f "$REGLAS_PRUEBA"
+occ gsi-talk-guard:modo normal > /dev/null
+
 for u in ana.perez luis.rojas carla.diaz analista.gsi; do
 	OC_PASS="$USUARIO_CLAVE" occ user:add --password-from-env --display-name="$u" "$u" > /dev/null
 done
@@ -115,7 +131,7 @@ Entorno listo.
   Clave privada:    $DESTINO/clave_privada.txt
 
 Pruebas:
-  NC_URL=http://127.0.0.1:$PUERTO USUARIO_A=ana.perez CLAVE_A=$USUARIO_CLAVE \\
+EXPECT_MASKING=yes NC_URL=http://127.0.0.1:$PUERTO USUARIO_A=ana.perez CLAVE_A=$USUARIO_CLAVE \\
   USUARIO_B=luis.rojas CLAVE_B=$USUARIO_CLAVE bash app/gsi_talk_guard/pruebas/prueba_humo.sh
   NC_URL=http://127.0.0.1:$PUERTO NC_DIR=$NC_DIR node pruebas/ui/prueba_ui.js
 FIN

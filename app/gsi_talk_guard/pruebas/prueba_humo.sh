@@ -14,14 +14,16 @@
 # Requiere curl y python3. Ejecútelo después de instalar la app y
 # después de cada actualización de Nextcloud o Talk.
 # =====================================================================
-set -u
+set -euo pipefail
 : "${NC_URL:?Defina NC_URL}" "${USUARIO_A:?}" "${CLAVE_A:?}" "${USUARIO_B:?}" "${CLAVE_B:?}"
+EXPECT_MASKING=${EXPECT_MASKING:-no}
+[[ "$EXPECT_MASKING" == yes || "$EXPECT_MASKING" == no ]] || { echo "EXPECT_MASKING debe ser yes o no" >&2; exit 2; }
 
 ocs() { # usuario clave método ruta [json]
-	curl -s -u "$1:$2" -X "$3" "$NC_URL/ocs/v2.php$4" -H "OCS-APIRequest: true" \
+	curl -fsS -u "$1:$2" -X "$3" "$NC_URL/ocs/v2.php$4" -H "OCS-APIRequest: true" \
 		-H "Accept: application/json" -H "Content-Type: application/json" ${5:+-d "$5"}
 }
-json() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
+json() { python3 -c "import json,sys; d=json.load(sys.stdin); assert d['ocs']['meta']['statuscode'] == 200, d['ocs']['meta']; print($1)"; }
 enviar() { # texto -> id
 	ocs "$USUARIO_A" "$CLAVE_A" POST "/apps/spreed/api/v1/chat/$SALA" \
 		"{\"message\": $(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1")}" \
@@ -41,9 +43,9 @@ echo "Creando sala temporal..."
 SALA=$(ocs "$USUARIO_A" "$CLAVE_A" POST /apps/spreed/api/v4/room \
 	"{\"roomType\":2,\"roomName\":\"GSI prueba de humo $(date +%Y%m%d-%H%M%S)\"}" | json "d['ocs']['data']['token']")
 [ -n "$SALA" ] || { echo "No se pudo crear la sala. Revise URL y credenciales."; exit 2; }
+trap 'ocs "$USUARIO_A" "$CLAVE_A" DELETE "/apps/spreed/api/v4/room/$SALA" >/dev/null; echo "Sala temporal borrada."' EXIT
 ocs "$USUARIO_A" "$CLAVE_A" POST "/apps/spreed/api/v4/room/$SALA/participants" \
 	"{\"newParticipant\":\"$USUARIO_B\",\"source\":\"users\"}" >/dev/null
-trap 'ocs "$USUARIO_A" "$CLAVE_A" DELETE "/apps/spreed/api/v4/room/$SALA" >/dev/null; echo "Sala temporal borrada."' EXIT
 
 echo
 echo "1. Mensaje normal (no debe cambiar)"
@@ -54,10 +56,10 @@ verificar "llega intacto" '[ "$VISTO" = "buenos días, ¿revisamos el informe?" 
 echo "2. Cuenta bancaria ficticia"
 ID=$(enviar "la cuenta es 0102-0000-00-0000000019")
 VISTO=$(leer_como_b "$ID"); echo "         B ve: $VISTO"
-if [[ "$VISTO" == *"0102****0019"* ]]; then
-	echo "  OK     enmascarada (regla cuenta_bancaria en modo enmascarar)"; ok=$((ok+1))
+if [[ "$EXPECT_MASKING" == yes ]]; then
+	verificar "la cuenta quedó enmascarada y no conserva el original" '[[ "$VISTO" == *"0102****0019"* && "$VISTO" != *"0102-0000-00-0000000019"* ]]'
 elif [[ "$VISTO" == *"0102-0000-00-0000000019"* ]]; then
-	echo "  INFO   llega sin enmascarar: la regla está en modo alertar o el modo es solo_alertar"
+	echo "  OK     llega intacta según EXPECT_MASKING=no (esta ejecución no verifica la alerta JSONL)"; ok=$((ok+1))
 else
 	echo "  FALLA  resultado inesperado"; fallas=$((fallas+1))
 fi
@@ -67,7 +69,11 @@ ID=$(enviar "te paso los datos en un momento")
 ocs "$USUARIO_A" "$CLAVE_A" PUT "/apps/spreed/api/v1/chat/$SALA/$ID" \
 	'{"message":"tarjeta 4111 1111 1111 1111"}' >/dev/null
 VISTO=$(leer_como_b "$ID"); echo "         B ve: $VISTO"
-verificar "la edición se procesó" '[[ "$VISTO" == *"4111"* ]]'
+if [[ "$EXPECT_MASKING" == yes ]]; then
+	verificar "la tarjeta de la edición quedó enmascarada" '[[ "$VISTO" == *"4111****1111"* && "$VISTO" != *"4111 1111 1111 1111"* ]]'
+else
+	verificar "la edición conserva el texto esperado" '[[ "$VISTO" == "tarjeta 4111 1111 1111 1111" ]]'
+fi
 
 echo "4. Palabras clave (solo alerta, el texto no cambia)"
 ID=$(enviar "pásamelo por whatsapp")

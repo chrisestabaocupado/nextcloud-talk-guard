@@ -68,6 +68,11 @@ class Settings {
 		$this->escribir('clave_publica', $base64);
 	}
 
+	public function clavePublicaId(): string {
+		$publica = base64_decode((string)$this->clavePublica(), true);
+		return $publica === false ? 'legacy' : substr(hash('sha256', $publica), 0, 32);
+	}
+
 	public function reglasPersonalizadas(): ?string {
 		$json = $this->leer('reglas');
 		return $json === '' ? null : $json;

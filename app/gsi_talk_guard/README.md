@@ -1,8 +1,8 @@
 # GSI Talk Guard
 
-App de Nextcloud de la Gerencia de Seguridad de la Información (IMCP). Analiza cada mensaje de Talk **antes de guardarlo**, genera alertas para Wazuh y, según la regla, oculta datos críticos, guarda el original cifrado y avisa al autor.
+App de Nextcloud de la Gerencia de Seguridad de la Información (IMCP). Analiza mensajes, ediciones y archivos compartidos de Talk **antes de guardarlos**, genera alertas locales y permite definir reglas de monitoreo. Según la regla, puede ocultar coincidencias, guardar el original cifrado como evidencia y avisar al autor. La integración con Wazuh/SIEM se abordará en una etapa posterior.
 
-Versión 1.1.0. Probada en **Nextcloud 35.0.2 con Talk 25.0.7**.
+Versión 1.3.0. Compatible con Nextcloud 35 y Talk 25; validar en preproducción antes de desplegar.
 
 ```
 Usuario envía ──▶ Talk ──▶ [antes de guardar] GSI Talk Guard
@@ -10,7 +10,8 @@ Usuario envía ──▶ Talk ──▶ [antes de guardar] GSI Talk Guard
                               ├─ oculta datos (si la regla dice "enmascarar")
                               └─ guarda el original cifrado
                          ──▶ base de datos y participantes reciben el texto ya enmascarado
-                         ──▶ [después de guardar] alerta en alertas.jsonl ──▶ Wazuh
+                         ──▶ [después de guardar] alerta local en alertas.jsonl
+                                                  └─▶ consulta desde el panel de Nextcloud
                                                   aviso al autor (notificación)
                                                   correo a la GSI (opcional)
 ```
@@ -29,24 +30,28 @@ Usuario envía ──▶ Talk ──▶ [antes de guardar] GSI Talk Guard
 | `appinfo/info.xml` | Manifiesto de la app |
 | `config/reglas.json` | Reglas predeterminadas (todas en modo `alertar`) |
 | `lib/` | Código de la app |
-| `lib/Controller`, `lib/Settings`, `templates`, `js`, `css`, `img` | Página de administración (1.1.0) |
+| `lib/Controller`, `lib/Settings`, `templates`, `js`, `css`, `img` | Página de administración (1.3.0) |
 | `pruebas/prueba_humo.sh` | Prueba automática contra un Nextcloud real |
 
-## Interfaz web (desde la versión 1.1.0)
+## Interfaz web
 
 En **Configuración de administración › GSI Talk Guard** hay tres pestañas:
 
 | Pestaña | Qué permite |
 | --- | --- |
 | **Alertas** | Ver las alertas con filtros por período (24 horas, 7 o 30 días), severidad, regla, acción y usuario. Resumen por severidad, detalle de cada alerta y actualización automática cada minuto. |
-| **Configuración** | Cambiar el modo (con botón de emergencia para dejar de ocultar), usuarios del piloto, correo de alertas, aviso al autor, dominios institucionales y la acción de cada regla, viendo cuántas alertas generó en los últimos 7 días. |
-| **Probar reglas** | Escribir un texto de ejemplo y ver qué reglas coinciden y cómo lo verían los participantes. |
+| **Configuración** | Cambiar el modo, usuarios del piloto, correo, aviso al autor y dominios; crear, editar, activar, desactivar y eliminar reglas de monitoreo. |
+| **Probar reglas** | Probar un texto ficticio como mensaje, edición o archivo para ver reglas coincidentes y el efecto del ocultamiento. |
+
+Cada regla se define con nombre e identificador, frases o expresión regular, severidad, eventos de Talk a revisar, umbral y acción. Las frases admiten lógica “cualquiera” o “todas”. Las expresiones regulares permiten detectar formatos de datos propios de la organización. El ocultamiento aplica solo a reglas regex y requiere la clave de evidencias.
+
+Esto cubre la mayoría de reglas de prevención en chat: datos con formato fijo (cuentas, documentos, teléfonos, códigos), listas de términos sensibles, varias coincidencias en un mismo mensaje, validación Luhn para tarjetas y exclusiones de dominios institucionales. El umbral cuenta coincidencias dentro de un solo evento. Esta primera etapa no evalúa el contenido binario de adjuntos, identidad del emisor/sala, ventanas de tiempo entre mensajes, ni intención semántica; esos casos requieren nuevos datos del evento o un analizador especializado.
 
 **Cada cambio hecho desde la web queda registrado** como una alerta `cambio_configuracion`, con usuario, detalle e IP, y se envía por correo si su severidad lo alcanza. Desactivar el análisis o dejar de ocultar una regla se registra con severidad alta.
 
 Por diseño, dos cosas siguen solo en `occ`: **generar las claves** (la clave privada no debe pasar por un navegador) y **leer evidencias** (exige acceso al servidor además de la clave). En el detalle de una alerta con evidencia, la página muestra el comando listo para copiar.
 
-Las alertas se leen del archivo `alertas.jsonl` y de sus copias rotadas (`.1`, `.2.gz`, ...), hasta 31 días.
+Las alertas se leen del archivo `alertas.jsonl` y de sus copias rotadas (`.1`, `.2.gz`, ...), hasta 31 días. Si el período supera 50.000 registros, se muestran los 50.000 más recientes.
 
 ### Delegar la página a la GSI
 
@@ -67,14 +72,14 @@ La configuración, las reglas, las claves y las evidencias están en la base de 
 ```bash
 NC=nextcloud-app-1
 occ() { docker exec -u www-data "$NC" php occ "$@"; }
-cd /tmp && rm -rf gsi_talk_guard && tar -xzf gsi_talk_guard-1.1.0.tar.gz
+cd /tmp && rm -rf gsi_talk_guard && tar -xzf gsi_talk_guard-1.3.0.tar.gz
 occ maintenance:mode --on
 docker exec "$NC" rm -rf /var/www/html/custom_apps/gsi_talk_guard
 docker cp gsi_talk_guard "$NC":/var/www/html/custom_apps/
 docker exec "$NC" chown -R www-data:www-data /var/www/html/custom_apps/gsi_talk_guard
 occ upgrade
 occ maintenance:mode --off
-occ app:list | grep gsi_talk_guard     # debe decir 1.1.0
+occ app:list | grep gsi_talk_guard     # debe decir 1.3.0
 ```
 
 El modo de mantenimiento evita que alguien envíe mensajes en los segundos en que la carpeta se reemplaza.
@@ -105,6 +110,8 @@ occ gsi-talk-guard:claves:generar
 
 Se guarda la clave **pública** en Nextcloud y se muestra la **privada una sola vez**. Guárdela fuera del servidor, por ejemplo en un gestor de contraseñas de la GSI con acceso dual. Sin clave pública, la app **nunca enmascara**, para no perder el original.
 
+Cada par tiene un ID. Las alertas con evidencia incluyen ese ID y el comando de lectura lo muestra. Conserve las claves privadas anteriores con sus IDs; la app deriva la clave pública desde la clave privada suministrada para descifrar evidencias tras una rotación. Las evidencias creadas antes de la versión 1.2.0 siguen usando la clave privada que estaba activa cuando se generaron.
+
 ### Opciones
 
 | Opción | Comando | Por omisión |
@@ -115,7 +122,7 @@ Se guarda la clave **pública** en Nextcloud y se muestra la **privada una sola 
 | Avisar al autor | `occ config:app:set gsi_talk_guard avisar_usuario --value=no` | Sí |
 | Ruta del archivo de alertas | `occ config:app:set gsi_talk_guard archivo_alertas --value=/ruta/alertas.jsonl` | `<datadirectory>/gsi_talk_guard/alertas.jsonl` |
 
-El correo usa la configuración SMTP de Nextcloud y se envía con los trabajos en segundo plano (cron). El correo nunca incluye el contenido del mensaje.
+El correo usa la configuración SMTP de Nextcloud y se envía con los trabajos en segundo plano (cron). El correo nunca incluye el contenido del mensaje. No se necesita Wazuh: el almacenamiento y la consulta de alertas funcionan dentro de Nextcloud. El archivo JSONL permite diseñar un conector futuro, pero no se configura ni envía a un SIEM en esta etapa.
 
 ### Aviso a los usuarios
 
@@ -125,7 +132,7 @@ Antes de activar el enmascaramiento, agregue al aviso del piloto una línea como
 
 ## 3. Plan de activación recomendado
 
-**Semanas 1 y 2: solo alertar.** Instale la app sin cambiar las reglas. Revise las alertas en Wazuh y anote los falsos positivos de cada regla.
+**Semanas 1 y 2: solo alertar.** Instale la app y revise las alertas en el panel de Nextcloud. Ajuste reglas y anote falsos positivos antes de activar cualquier ocultamiento.
 
 **Después: enmascarar regla por regla.** Empiece por `tarjeta` y `cuenta_bancaria`, que son las más precisas. Deje `credenciales` para después.
 
@@ -160,16 +167,9 @@ occ gsi-talk-guard:modo desactivado    # no analiza nada
 occ gsi-talk-guard:modo normal         # aplica la acción de cada regla
 ```
 
-## 5. Conectar con Wazuh
+## 5. Integración SIEM futura
 
-En el agente del servidor de Docker, active el bloque *1a* de `wazuh/agente_ossec.conf.xml` (paquete `talk-monitor`), con la ruta en el anfitrión de `data/gsi_talk_guard/alertas.jsonl`. Cargue también las reglas actualizadas `talk_monitor_rules.xml`, que reconocen las alertas de la app (`origen: talk-guard`) y agregan:
-
-| Regla | Nivel | Qué detecta |
-| --- | --- | --- |
-| 100312 | 10 | Consulta de una evidencia cifrada |
-| 100313 | 11 | Dato ocultado automáticamente |
-
-El dashboard y el resto de las reglas funcionan igual que con el monitor de Python. Cada alerta incluye `accion` (`alerta` o `enmascarado`), `evento` (`mensaje`, `edicion` o `archivo`) y `evidencia` (el identificador para leer el original).
+La versión actual no requiere Wazuh ni configura un envío remoto. El operador revisa las alertas desde la pestaña **Alertas** de Nextcloud. Las alertas también se persisten en JSONL para retención local y para facilitar un conector posterior. La integración futura deberá definir transporte, autenticación, reintentos, control de duplicados y reglas de mapeo sin afectar la entrega de mensajes de Talk.
 
 ## 6. Leer una evidencia
 
@@ -180,23 +180,23 @@ occ gsi-talk-guard:evidencia:leer 8 --caso GSI-INV-001-2026 --solicitante analis
 # pide la clave privada sin mostrarla en pantalla
 ```
 
-El identificador es el valor del campo `evidencia` de la alerta. El comando muestra el mensaje original y verifica su huella SHA-256. Cada intento, exitoso o fallido, queda en la tabla `oc_gsitg_accesos` y genera una alerta para Wazuh (regla 100312).
+El identificador es el valor del campo `evidencia` de la alerta. El comando muestra el mensaje original y verifica su huella SHA-256. Cada intento, exitoso o fallido, queda en la tabla `oc_gsitg_accesos` y genera una alerta local.
 
 ## 7. Prueba de humo
 
 Cree dos usuarios de prueba y ejecute desde cualquier equipo con acceso a Nextcloud:
 
 ```bash
-NC_URL=https://nube.imcp.local USUARIO_A=prueba.gsi1 CLAVE_A='...' \
+EXPECT_MASKING=yes NC_URL=https://nube.imcp.local USUARIO_A=prueba.gsi1 CLAVE_A='...' \
 USUARIO_B=prueba.gsi2 CLAVE_B='...' ./pruebas/prueba_humo.sh
 ```
 
-Crea una sala temporal, envía datos ficticios, comprueba lo que ve el destinatario y borra la sala. Ejecútela al instalar la app y **antes y después de cada actualización mayor de Nextcloud o Talk**.
+Crea una sala temporal, envía datos ficticios, comprueba lo que ve el destinatario y borra la sala. `EXPECT_MASKING=yes` requiere que las reglas estén en modo de enmascaramiento y falla si el original sigue visible. `EXPECT_MASKING=no` comprueba que el mensaje llega intacto, pero no valida la alerta JSONL. Ejecútela al instalar la app y **antes y después de cada actualización mayor de Nextcloud o Talk**.
 
 ## 8. Migrar desde el monitor de Python
 
 1. Instale la app y verifique con la prueba de humo.
-2. Active el bloque de la app en el agente de Wazuh.
+2. Si este servidor todavía ejecuta el monitor legado con Wazuh, migre ese componente cuando el conector nuevo esté planificado; esta app no requiere ni activa Wazuh.
 3. Detenga el monitor: `docker compose down` en `/opt/talk-monitor`.
 4. Elimine el rol de base de datos: `DROP SCHEMA gsi_monitor CASCADE; DROP ROLE gsi_monitor;`
 

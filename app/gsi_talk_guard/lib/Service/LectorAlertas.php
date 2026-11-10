@@ -34,8 +34,9 @@ class LectorAlertas {
 			$archivos[] = $base . '.' . $n . '.gz';
 		}
 
-		$alertas = [];
+		$alertas = new \SplMinHeap();
 		$truncado = false;
+		$secuencia = 0;
 		foreach ($archivos as $archivo) {
 			if (!is_file($archivo) || !is_readable($archivo)) {
 				continue;
@@ -54,10 +55,15 @@ class LectorAlertas {
 				if ($t === false || $t < $desde) {
 					continue;
 				}
-				$alertas[] = $a;
-				if (count($alertas) >= self::ALERTAS_MAXIMAS) {
+				$prioridad = [$t, $secuencia++, $a];
+				if ($alertas->count() < self::ALERTAS_MAXIMAS) {
+					$alertas->insert($prioridad);
+				} else {
 					$truncado = true;
-					break;
+					if ($t > $alertas->top()[0]) {
+						$alertas->extract();
+						$alertas->insert($prioridad);
+					}
 				}
 			}
 			fclose($h);
@@ -66,8 +72,12 @@ class LectorAlertas {
 			}
 		}
 
-		usort($alertas, fn ($x, $y) => strcmp((string)$y['detectado'], (string)$x['detectado']));
-		return ['alertas' => $alertas, 'truncado' => $truncado];
+		$recientes = [];
+		while (!$alertas->isEmpty()) {
+			$recientes[] = $alertas->extract()[2];
+		}
+		usort($recientes, fn ($x, $y) => strcmp((string)$y['detectado'], (string)$x['detectado']));
+		return ['alertas' => $recientes, 'truncado' => $truncado];
 	}
 
 	/**

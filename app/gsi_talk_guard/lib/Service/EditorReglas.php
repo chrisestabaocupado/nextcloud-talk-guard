@@ -49,6 +49,39 @@ class EditorReglas {
 		throw new \InvalidArgumentException('No existe la regla ' . $id . '.');
 	}
 
+	/** Crea o reemplaza una regla completa después de validar el conjunto. */
+	public function guardarRegla(array $regla, ?string $idOriginal = null): void {
+		$datos = $this->actual();
+		$reglas = $datos['reglas'] ?? [];
+		$reemplazada = false;
+		foreach ($reglas as $i => $existente) {
+			if ($idOriginal !== null && ($existente['id'] ?? '') === $idOriginal) {
+				$reglas[$i] = $regla;
+				$reemplazada = true;
+				break;
+			}
+		}
+		if ($idOriginal !== null && !$reemplazada) {
+			throw new \InvalidArgumentException('La regla que intenta editar ya no existe. Recargue la página.');
+		}
+		if (!$reemplazada) {
+			$reglas[] = $regla;
+		}
+		$datos['reglas'] = $reglas;
+		$this->guardar($datos);
+	}
+
+	public function eliminarRegla(string $id): void {
+		$datos = $this->actual();
+		$reglas = $datos['reglas'] ?? [];
+		$nuevas = array_values(array_filter($reglas, fn (array $r) => ($r['id'] ?? '') !== $id));
+		if (count($nuevas) === count($reglas)) {
+			throw new \InvalidArgumentException('La regla ya no existe. Recargue la página.');
+		}
+		$datos['reglas'] = $nuevas;
+		$this->guardar($datos);
+	}
+
 	/** @return list<string> */
 	public function dominios(): array {
 		return array_values(array_map('strval', $this->actual()['dominios_institucionales'] ?? []));

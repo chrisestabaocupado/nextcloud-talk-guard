@@ -54,11 +54,22 @@ class AdminController extends Controller {
 			$reglas[] = [
 				'id' => $r->id,
 				'nombre' => $r->nombre,
+				'descripcion' => $r->descripcion,
+				'descripcion_usuario' => $r->descripcionUsuario,
 				'tipo' => $r->tipo,
+				'definicion' => $r->definicion,
 				'severidad' => $r->severidad,
 				'accion' => $r->accion,
+				'habilitada' => $r->habilitada,
+				'eventos' => $r->eventos,
+				'palabras' => $r->palabras,
+				'umbral' => $r->umbral,
+				'coincidencia' => $r->requiereTodasPalabras ? 'todas' : 'cualquiera',
 				'mascara' => $r->mascara,
 				'puede_enmascarar' => $r->tipo === 'regex' && $r->mascara !== null,
+				'validar' => $r->validar,
+				'excluir_dominios_institucionales' => $r->excluirInstitucionales,
+				'reemplazo' => $r->reemplazo,
 				'alertas_7_dias' => $conteo[$r->id] ?? 0,
 			];
 		}
@@ -88,9 +99,12 @@ class AdminController extends Controller {
 
 	#[AuthorizedAdminSetting(settings: Admin::class)]
 	#[FrontpageRoute(verb: 'POST', url: '/api/probar')]
-	public function probar(string $texto = ''): JSONResponse {
+	public function probar(string $texto = '', string $evento = 'mensaje'): JSONResponse {
 		$texto = mb_substr($texto, 0, 32000);
-		$hallazgos = $this->motor->evaluar($texto);
+		if (!in_array($evento, ['mensaje', 'edicion', 'archivo'], true)) {
+			return $this->error('Tipo de evento inválido.');
+		}
+		$hallazgos = $this->motor->evaluar($texto, $evento);
 		$enmascarado = $this->motor->enmascarar($texto, array_map(fn (Hallazgo $h) => $h->regla, $hallazgos));
 		return new JSONResponse([
 			'hallazgos' => array_map(fn (Hallazgo $h) => [
@@ -196,6 +210,38 @@ class AdminController extends Controller {
 		if ($anterior !== $accion) {
 			$this->registrar("regla $id: $anterior -> $accion", $accion === 'alertar' ? 'alta' : 'media');
 		}
+		return new JSONResponse(['ok' => true]);
+	}
+
+	#[AuthorizedAdminSetting(settings: Admin::class)]
+	#[FrontpageRoute(verb: 'POST', url: '/api/regla/guardar')]
+	public function guardarRegla(array $regla, string $id_original = ''): JSONResponse {
+		$id = trim((string)($regla['id'] ?? ''));
+		$nombre = trim((string)($regla['nombre'] ?? ''));
+		if ($nombre === '' || $id === '') {
+			return $this->error('Indique un nombre para la regla.');
+		}
+		if (($regla['accion'] ?? 'alertar') === 'enmascarar' && !$this->evidencias->disponible()) {
+			return $this->error('Configure primero la clave de evidencias desde el servidor.');
+		}
+		try {
+			$this->editor->guardarRegla($regla, $id_original !== '' ? $id_original : null);
+		} catch (\InvalidArgumentException $e) {
+			return $this->error($e->getMessage());
+		}
+		$this->registrar('regla guardada: ' . $id . ' (' . $nombre . ')', 'media');
+		return new JSONResponse(['ok' => true]);
+	}
+
+	#[AuthorizedAdminSetting(settings: Admin::class)]
+	#[FrontpageRoute(verb: 'POST', url: '/api/regla/eliminar')]
+	public function eliminarRegla(string $id): JSONResponse {
+		try {
+			$this->editor->eliminarRegla($id);
+		} catch (\InvalidArgumentException $e) {
+			return $this->error($e->getMessage());
+		}
+		$this->registrar('regla eliminada: ' . $id, 'media');
 		return new JSONResponse(['ok' => true]);
 	}
 

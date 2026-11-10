@@ -19,10 +19,22 @@ final class Regla {
 		public readonly ?string $validar,      // luhn | null
 		public readonly bool $excluirInstitucionales,
 		public readonly string $descripcionUsuario,
+		public readonly bool $habilitada = true,
+		/** @var list<string> */
+		public readonly array $eventos = ['mensaje', 'edicion', 'archivo'],
+		public readonly bool $requiereTodasPalabras = false,
+		/** @var list<string> */
+		public readonly array $palabras = [],
+		public readonly string $definicion = '',
+		public readonly string $descripcion = '',
 	) {
 	}
 
 	public function puedeEnmascarar(): bool {
 		return $this->accion === 'enmascarar' && $this->tipo === 'regex' && $this->mascara !== null;
+	}
+
+	public function aplicaA(string $evento): bool {
+		return $this->habilitada && in_array($evento, $this->eventos, true);
 	}
 }

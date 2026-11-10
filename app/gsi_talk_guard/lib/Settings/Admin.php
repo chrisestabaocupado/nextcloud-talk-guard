@@ -25,7 +25,7 @@ class Admin implements IDelegatedSettings {
 		Util::addScript(Application::APP_ID, 'admin');
 		Util::addStyle(Application::APP_ID, 'admin');
 		$rutas = [];
-		foreach (['estado', 'alertas', 'probar', 'modo', 'config', 'dominios', 'regla'] as $r) {
+		foreach (['estado', 'alertas', 'probar', 'modo', 'config', 'dominios', 'regla', 'guardarRegla', 'eliminarRegla'] as $r) {
 			$rutas[$r] = $this->url->linkToRoute(Application::APP_ID . '.admin.' . $r);
 		}
 		return new TemplateResponse(Application::APP_ID, 'admin', ['rutas' => $rutas]);

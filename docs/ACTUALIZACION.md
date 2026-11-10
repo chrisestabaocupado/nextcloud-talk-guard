@@ -76,6 +76,8 @@ Si el `CHANGELOG.md` indica **«Migraciones: sí»**, active primero el modo de 
 
 En los comandos, reemplace `X.Y.Z` por la versión nueva. La configuración, las reglas, la clave pública y las evidencias están en la base de datos y se conservan.
 
+Para la versión 1.2.0, `occ upgrade` agrega el ID de clave a las evidencias nuevas. Las filas anteriores quedan sin ID y siguen leyéndose con la clave privada que las creó. Conserve esa clave privada y pruébela antes de rotar o reemplazar el par.
+
 **4.1 Copie el paquete al servidor.** Desde su computadora:
 
 ```bash
