@@ -2,7 +2,7 @@
 
 App de Nextcloud de la Gerencia de Seguridad de la Información (IMCP). Analiza mensajes, ediciones y archivos compartidos de Talk **antes de guardarlos**, genera alertas locales y permite definir reglas de monitoreo. Según la regla, puede ocultar coincidencias, guardar el original cifrado como evidencia y avisar al autor. La integración con Wazuh/SIEM se abordará en una etapa posterior.
 
-Versión 1.3.1. Compatible con Nextcloud 35 y Talk 25; validar en preproducción antes de desplegar.
+Versión 1.4.0. Compatible con Nextcloud 35 y Talk 25; validar en preproducción antes de desplegar.
 
 ```
 Usuario envía ──▶ Talk ──▶ [antes de guardar] GSI Talk Guard
@@ -30,7 +30,7 @@ Usuario envía ──▶ Talk ──▶ [antes de guardar] GSI Talk Guard
 | `appinfo/info.xml` | Manifiesto de la app |
 | `config/reglas.json` | Reglas predeterminadas (todas en modo `alertar`) |
 | `lib/` | Código de la app |
-| `lib/Controller`, `lib/Settings`, `templates`, `js`, `css`, `img` | Página de administración (1.3.0) |
+| `lib/Controller`, `lib/Settings`, `templates`, `js`, `css`, `img` | Página de administración (1.4.0) |
 | `pruebas/prueba_humo.sh` | Prueba automática contra un Nextcloud real |
 
 ## Interfaz web
@@ -72,14 +72,14 @@ La configuración, las reglas, las claves y las evidencias están en la base de 
 ```bash
 NC=nextcloud-app-1
 occ() { docker exec -u www-data "$NC" php occ "$@"; }
-cd /tmp && rm -rf gsi_talk_guard && tar -xzf gsi_talk_guard-1.3.1.tar.gz
+cd /tmp && rm -rf gsi_talk_guard && tar -xzf gsi_talk_guard-1.4.0.tar.gz
 occ maintenance:mode --on
 docker exec "$NC" rm -rf /var/www/html/custom_apps/gsi_talk_guard
 docker cp gsi_talk_guard "$NC":/var/www/html/custom_apps/
 docker exec "$NC" chown -R www-data:www-data /var/www/html/custom_apps/gsi_talk_guard
 occ upgrade
 occ maintenance:mode --off
-occ app:list | grep gsi_talk_guard     # debe decir 1.3.1
+occ app:list | grep gsi_talk_guard     # debe decir 1.4.0
 ```
 
 El modo de mantenimiento evita que alguien envíe mensajes en los segundos en que la carpeta se reemplaza.

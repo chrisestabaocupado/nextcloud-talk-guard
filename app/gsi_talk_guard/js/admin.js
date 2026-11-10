@@ -173,11 +173,23 @@
 	// ------------------------------------------------------------------
 
 	const filtros = { dias: '1', severidad: 'baja', regla: '', autor: '', accion: '', pagina: 1 }
+	let activadorModal = null
 	let temporizadorAuto = null
 
 	function dibujarAlertas() {
 		const p = panel('alertas')
 		p.replaceChildren()
+		const tituloModal = el('h2', { id: 'gsitg-modal-titulo', text: 'Detalle de alerta' })
+		const cuerpoModal = el('div', { class: 'gsitg-modal__contenido' })
+		const modal = el('dialog', { id: 'gsitg-alerta-modal', class: 'gsitg-modal', 'aria-labelledby': 'gsitg-modal-titulo' },
+			el('header', { class: 'gsitg-modal__cabecera' }, tituloModal,
+				el('button', { type: 'button', class: 'gsitg-modal__cerrar', 'aria-label': 'Cerrar detalle de alerta', text: '×', onclick: () => modal.close() })),
+			cuerpoModal)
+		modal.addEventListener('close', () => {
+			if (activadorModal && activadorModal.isConnected) activadorModal.focus()
+			activadorModal = null
+		})
+		modal.addEventListener('click', (ev) => { if (ev.target === modal) modal.close() })
 
 		const opcionesRegla = [['', 'Todas las reglas']]
 			.concat(estado.reglas.map((r) => [r.id, r.nombre]))
@@ -222,6 +234,7 @@
 			el('div', { class: 'gsitg-resumen', id: 'gsitg-resumen' }),
 			el('div', { class: 'gsitg-tabla-envoltura' }, el('table', { class: 'gsitg-tabla', id: 'gsitg-tabla' })),
 			el('div', { class: 'gsitg-paginas', id: 'gsitg-paginas' }),
+			modal,
 		)
 	}
 
@@ -285,7 +298,7 @@
 			cuerpo.append(el('tr', {}, el('td', { colspan: '7', class: 'gsitg-vacio', text: 'No hay alertas con estos filtros.' })))
 		}
 		for (const a of datos.alertas) {
-			const fila = el('tr', { class: 'gsitg-fila', tabindex: '0', 'aria-expanded': 'false' },
+			const fila = el('tr', { class: 'gsitg-fila', tabindex: '0', 'aria-haspopup': 'dialog', 'aria-controls': 'gsitg-alerta-modal' },
 				el('td', { text: fecha(a.detectado) }),
 				el('td', {}, insignia(a.severidad)),
 				el('td', { text: nombreRegla(a.regla_id) }),
@@ -294,14 +307,19 @@
 				el('td', { class: 'gsitg-sala', text: a.sala_nombre || a.detalle || (a.caso ? 'Caso ' + a.caso : '—') }),
 				el('td', { text: a.archivo || '' }),
 			)
-			const detalle = el('tr', { class: 'gsitg-detalle', hidden: true }, el('td', { colspan: '7' }, detalleAlerta(a)))
-			const alternar = () => {
-				detalle.hidden = !detalle.hidden
-				fila.setAttribute('aria-expanded', detalle.hidden ? 'false' : 'true')
+			const abrir = () => {
+				const modal = panel('alertas').querySelector('.gsitg-modal')
+				const titulo = modal.querySelector('#gsitg-modal-titulo')
+				const contenido = modal.querySelector('.gsitg-modal__contenido')
+				titulo.textContent = 'Alerta: ' + (a.regla || nombreRegla(a.regla_id) || a.regla_id || 'sin regla')
+				contenido.replaceChildren(detalleAlerta(a))
+				activadorModal = fila
+				modal.showModal()
+				modal.querySelector('.gsitg-modal__cerrar').focus()
 			}
-			fila.addEventListener('click', alternar)
-			fila.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar() } })
-			cuerpo.append(fila, detalle)
+			fila.addEventListener('click', abrir)
+			fila.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); abrir() } })
+			cuerpo.append(fila)
 		}
 		tabla.replaceChildren(cabecera, cuerpo)
 
@@ -314,22 +332,26 @@
 	}
 
 	function detalleAlerta(a) {
-		const datos = [
-			['Identificador', a.alerta_id],
-			['Evento', a.evento],
-			['Fecha del mensaje', a.fecha_mensaje ? fecha(a.fecha_mensaje) : null],
-			['Tipo de sala', a.sala_tipo],
-			['Participantes', a.participantes ? a.participantes.length + ': ' + a.participantes.join(', ') : null],
-			['Coincidencias', a.coincidencias],
-			['Fragmentos', a.fragmentos && a.fragmentos.length ? a.fragmentos.join('   ') : null],
-			['Detalle', a.detalle],
-			['ID de clave', a.clave_id],
-			['Nota', a.nota],
-			['Caso', a.caso],
-			['Solicitante', a.solicitante],
-			['Dirección IP', a.ip],
-		].filter(([, v]) => v !== null && v !== undefined && v !== '')
-		const lista = el('dl', { class: 'gsitg-dl' }, datos.map(([k, v]) => [el('dt', { text: k }), el('dd', { text: String(v) })]))
+		const etiquetas = {
+			origen: 'Origen', alerta_id: 'Identificador de alerta', detectado: 'Fecha de detección', nivel: 'Nivel',
+			evento: 'Evento', regla_id: 'Identificador de regla', regla: 'Regla', severidad: 'Severidad', accion: 'Acción',
+			coincidencias: 'Cantidad de coincidencias', fragmentos: 'Fragmentos detectados', autor: 'Autor', tipo_autor: 'Tipo de autor',
+			mensaje_id: 'Identificador del mensaje', fecha_mensaje: 'Fecha del mensaje', sala_token: 'Token de sala',
+			sala_nombre: 'Sala', sala_tipo: 'Tipo de sala', participantes: 'Participantes', archivo: 'Archivo',
+			evidencia: 'Identificador de evidencia', clave_id: 'ID de clave', huella_sha256: 'Huella SHA-256',
+			nota: 'Nota', detalle: 'Detalle', caso: 'Caso', solicitante: 'Solicitante', ip: 'Dirección IP',
+		}
+		const valor = (clave, dato) => {
+			if (clave === 'detectado' || clave === 'fecha_mensaje') return fecha(dato)
+			if (Array.isArray(dato)) return dato.length ? dato.join(', ') : '—'
+			if (dato && typeof dato === 'object') return JSON.stringify(dato, null, 2)
+			return String(dato)
+		}
+		const datos = Object.entries(a).filter(([, v]) => v !== null && v !== undefined && v !== '')
+		const lista = el('dl', { class: 'gsitg-dl gsitg-dl--modal' }, datos.map(([k, v]) => [
+			el('dt', { text: etiquetas[k] || k }),
+			el('dd', { text: valor(k, v) }),
+		]))
 		if (!a.evidencia || a.regla_id === 'acceso_evidencia') {
 			return lista
 		}

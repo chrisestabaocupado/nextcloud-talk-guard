@@ -10,6 +10,14 @@ Pasos extra: ninguno | descripción
 - Cambio
 ```
 
+## 1.4.0 — 2026-11-10
+Compatibilidad: Nextcloud 35 · Talk 25
+Migraciones: no
+Pasos extra: ninguno.
+- El detalle de una alerta se abre en un modal al activar la fila, en lugar de expandir la tabla.
+- El modal muestra todos los campos disponibles de la alerta, incluidos los campos añadidos en versiones futuras.
+- El modal permite cerrar con botón, Escape o clic en el fondo; restaura el foco a la fila que lo abrió.
+
 ## 1.3.1 — 2026-11-10
 Compatibilidad: Nextcloud 35 · Talk 25
 Migraciones: sí (corrige la migración pendiente de `clave_id` para conservar las evidencias anteriores con `NULL`)

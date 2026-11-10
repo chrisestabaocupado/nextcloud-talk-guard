@@ -42,8 +42,18 @@
 .gsitg-sala { max-width: 320px; overflow-wrap: anywhere; }
 .gsitg-num { text-align: right; font-variant-numeric: tabular-nums; }
 .gsitg-vacio { text-align: center; color: var(--color-text-maxcontrast); padding: 24px !important; }
-.gsitg-detalle > td { background: var(--color-background-dark); }
 .gsitg-id { color: var(--color-text-maxcontrast); font-size: 12px; }
+.gsitg-modal { color: var(--color-main-text); background: var(--color-main-background); border: 1px solid var(--color-border); border-radius: var(--border-radius-large, 8px); box-shadow: 0 16px 48px rgba(0, 0, 0, .3); width: min(760px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 48px); padding: 0; overflow: hidden; }
+.gsitg-modal::backdrop { background: rgba(0, 0, 0, .58); backdrop-filter: blur(2px); }
+.gsitg-modal__cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--color-border); }
+.gsitg-modal__cabecera h2 { margin: 0; font-size: 20px; line-height: 1.35; }
+.gsitg-modal__cerrar { flex: 0 0 auto; min-width: 36px; min-height: 36px; margin: -4px -8px 0 0; border: 0; border-radius: 50%; background: transparent; color: var(--color-main-text); font-size: 28px; line-height: 1; cursor: pointer; }
+.gsitg-modal__cerrar:hover, .gsitg-modal__cerrar:focus { background: var(--color-background-hover); }
+.gsitg-modal__contenido { max-height: calc(100vh - 120px); overflow: auto; padding: 16px 20px 20px; }
+.gsitg-dl--modal { grid-template-columns: minmax(140px, .34fr) minmax(0, 1fr); gap: 8px 18px; }
+.gsitg-dl--modal dt { font-weight: bold; }
+.gsitg-dl--modal dd { overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 520px) { .gsitg-modal__cabecera, .gsitg-modal__contenido { padding-left: 14px; padding-right: 14px; } .gsitg-dl--modal { grid-template-columns: 1fr; gap: 2px; } .gsitg-dl--modal dd { margin-bottom: 8px; } }
 
 /* Insignias */
 .gsitg-sev { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; white-space: nowrap; color: #fff; }
