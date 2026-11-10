@@ -1,0 +1,183 @@
+{
+  "_ayuda": [
+    "accion: alertar | enmascarar. Solo las reglas de tipo regex con mascara pueden enmascarar.",
+    "mascara: digitos (deja los 4 primeros y los 4 ultimos digitos) | parcial (oculta el centro) | total (usa el texto de reemplazo).",
+    "Las reglas de tipo palabras no distinguen mayusculas ni acentos y solo pueden alertar.",
+    "Para activar el enmascaramiento cambie accion a enmascarar e importe con: occ gsi-talk-guard:reglas:importar archivo.json"
+  ],
+  "dominios_institucionales": [
+    "imcp.gob.ve",
+    "imcp.local"
+  ],
+  "reglas": [
+    {
+      "id": "credenciales",
+      "nombre": "Posible contraseña o credencial",
+      "tipo": "regex",
+      "patron": "(?i)\\b(contrase(?:ñ|n)a|clave|password|passwd|pwd|pin|token|usuario y clave)\\b(?:\\s+[\\w.]+){0,4}?\\s*(?:\\bes\\b|:|=)[^\\n]{0,20}?(?=\\S*[\\d!@#$%^&*_.-])\\S{4,}",
+      "severidad": "alta",
+      "accion": "alertar",
+      "mascara": "total",
+      "reemplazo": "[credencial oculta por GSI]",
+      "descripcion_usuario": "una contraseña o credencial"
+    },
+    {
+      "id": "cuenta_bancaria",
+      "nombre": "Número de cuenta bancaria (20 dígitos)",
+      "tipo": "regex",
+      "patron": "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{2}[- ]?\\d{10}\\b",
+      "severidad": "alta",
+      "accion": "alertar",
+      "mascara": "digitos",
+      "descripcion_usuario": "un número de cuenta bancaria"
+    },
+    {
+      "id": "tarjeta",
+      "nombre": "Número de tarjeta de pago",
+      "tipo": "regex",
+      "patron": "\\b(?:\\d[ -]?){13,19}\\b",
+      "severidad": "alta",
+      "validar": "luhn",
+      "accion": "alertar",
+      "mascara": "digitos",
+      "descripcion_usuario": "un número de tarjeta de pago"
+    },
+    {
+      "id": "cedulas_multiples",
+      "nombre": "Varias cédulas en un mismo mensaje",
+      "tipo": "regex",
+      "patron": "\\b[VvEe]-?\\s?\\d{1,2}\\.?\\d{3}\\.?\\d{3}\\b",
+      "severidad": "alta",
+      "umbral": 3,
+      "accion": "alertar",
+      "mascara": "parcial",
+      "descripcion_usuario": "números de cédula"
+    },
+    {
+      "id": "exfiltracion",
+      "nombre": "Intención de sacar información de la plataforma",
+      "tipo": "palabras",
+      "palabras": [
+        "correo personal",
+        "mi gmail",
+        "mi hotmail",
+        "por whatsapp",
+        "por telegram",
+        "pasamelo por fuera",
+        "mandamelo por fuera",
+        "en un pendrive",
+        "en un pen drive",
+        "memoria usb",
+        "tomale foto",
+        "captura de pantalla",
+        "no le digas a nadie",
+        "borralo despues",
+        "que no quede registro"
+      ],
+      "severidad": "media",
+      "accion": "alertar"
+    },
+    {
+      "id": "destino_externo",
+      "nombre": "Enlace o correo hacia un servicio externo",
+      "tipo": "regex",
+      "patron": "(?i)\\b[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+\\b|https?://(?:www\\.)?(?:wetransfer\\.com|we\\.tl|mega\\.nz|drive\\.google\\.com|docs\\.google\\.com|dropbox\\.com|onedrive\\.live\\.com|1drv\\.ms|t\\.me|wa\\.me|pastebin\\.com)\\S*",
+      "severidad": "media",
+      "excluir_dominios_institucionales": true,
+      "accion": "alertar"
+    },
+    {
+      "id": "datos_clientes",
+      "nombre": "Datos de clientes",
+      "tipo": "palabras",
+      "palabras": [
+        "lista de clientes",
+        "base de clientes",
+        "datos de clientes",
+        "datos del cliente",
+        "cartera de clientes",
+        "expediente del cliente",
+        "estado de cuenta",
+        "historial crediticio",
+        "referencias bancarias"
+      ],
+      "severidad": "media",
+      "accion": "alertar"
+    },
+    {
+      "id": "sistemas",
+      "nombre": "Sistemas, accesos y bases de datos",
+      "tipo": "palabras",
+      "palabras": [
+        "base de datos",
+        "respaldo de la base",
+        "backup",
+        "dump",
+        "pg_dump",
+        ".sql",
+        "credenciales",
+        "usuario y clave",
+        "acceso remoto",
+        "vpn",
+        "anydesk",
+        "teamviewer"
+      ],
+      "severidad": "media",
+      "accion": "alertar"
+    },
+    {
+      "id": "operaciones",
+      "nombre": "Operaciones sensibles de la institución",
+      "tipo": "palabras",
+      "palabras": [
+        "boveda",
+        "arqueo",
+        "caja fuerte",
+        "combinacion de la caja",
+        "traslado de valores",
+        "avaluo",
+        "prendas empeñadas",
+        "remate",
+        "nomina",
+        "recibo de pago",
+        "salarios"
+      ],
+      "severidad": "media",
+      "accion": "alertar"
+    },
+    {
+      "id": "clasificacion",
+      "nombre": "Mención de información clasificada",
+      "tipo": "palabras",
+      "palabras": [
+        "confidencial",
+        "uso interno",
+        "no divulgar",
+        "reservado",
+        "restringido",
+        "solo para tus ojos"
+      ],
+      "severidad": "baja",
+      "accion": "alertar"
+    }
+  ],
+  "archivos": {
+    "severidad_base": "baja",
+    "palabras_nombre_sensible": [
+      "nomina",
+      "clientes",
+      "cuentas",
+      "claves",
+      "contraseñas",
+      "credenciales",
+      "confidencial",
+      "respaldo",
+      "backup",
+      ".sql",
+      ".kdbx",
+      ".pem",
+      ".key"
+    ],
+    "severidad_nombre_sensible": "media"
+  }
+}

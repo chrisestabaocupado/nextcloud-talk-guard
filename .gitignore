@@ -1,0 +1,5 @@
+node_modules/
+dist/
+CLAUDE.local.md
+*.dump
+clave_privada*

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>gsi_talk_guard</id>
+	<name>GSI Talk Guard</name>
+	<summary>Detecta y enmascara información sensible en Nextcloud Talk</summary>
+	<description><![CDATA[App interna de la Gerencia de Seguridad de la Información (IMCP).
+
+Analiza cada mensaje de Talk antes de guardarlo, genera alertas para Wazuh y, según la regla, enmascara datos críticos (cuentas bancarias, tarjetas, credenciales), guarda el original cifrado como evidencia y avisa al autor.
+
+Se administra desde Configuración de administración › GSI Talk Guard o con los comandos occ gsi-talk-guard:*]]></description>
+	<version>1.1.0</version>
+	<licence>agpl</licence>
+	<author>Gerencia de Seguridad de la Información - IMCP</author>
+	<namespace>GsiTalkGuard</namespace>
+	<category>security</category>
+	<bugs>https://imcp.local/gsi</bugs>
+	<dependencies>
+		<nextcloud min-version="35" max-version="35"/>
+	</dependencies>
+	<settings>
+		<admin>OCA\GsiTalkGuard\Settings\Admin</admin>
+		<admin-section>OCA\GsiTalkGuard\Settings\Section</admin-section>
+	</settings>
+	<commands>
+		<command>OCA\GsiTalkGuard\Command\Estado</command>
+		<command>OCA\GsiTalkGuard\Command\Modo</command>
+		<command>OCA\GsiTalkGuard\Command\Probar</command>
+		<command>OCA\GsiTalkGuard\Command\ReglasImportar</command>
+		<command>OCA\GsiTalkGuard\Command\ReglasExportar</command>
+		<command>OCA\GsiTalkGuard\Command\ClavesGenerar</command>
+		<command>OCA\GsiTalkGuard\Command\EvidenciaLeer</command>
+	</commands>
+</info>

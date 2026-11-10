@@ -1,0 +1,8 @@
+{
+  "name": "gsi-talk-guard-prueba-ui",
+  "private": true,
+  "description": "Prueba de la página de administración de GSI Talk Guard con jsdom",
+  "scripts": { "prueba": "node prueba_ui.js" },
+  "dependencies": { "jsdom": "^24.1.3" },
+  "engines": { "node": ">=20" }
+}

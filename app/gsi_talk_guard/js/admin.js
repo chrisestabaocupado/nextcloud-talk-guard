@@ -1,0 +1,554 @@
+/**
+ * GSI Talk Guard · página de administración.
+ * JavaScript sin dependencias. Todo dato que viene del servidor se inserta
+ * con textContent (nunca innerHTML) para evitar inyección de código.
+ */
+(function () {
+	'use strict'
+
+	const raiz = document.getElementById('gsitg')
+	if (!raiz) {
+		return
+	}
+	const rutas = JSON.parse(raiz.dataset.rutas)
+	const token = document.head.dataset.requesttoken || ''
+
+	const NIVEL = { critica: 4, alta: 3, media: 2, baja: 1 }
+	const SEVERIDAD = { critica: 'Crítica', alta: 'Alta', media: 'Media', baja: 'Baja' }
+	const ACCION = {
+		alerta: 'Alerta', enmascarado: 'Ocultado', configuracion: 'Configuración',
+		leida: 'Evidencia leída', fallida: 'Lectura fallida',
+	}
+	const OTRAS_REGLAS = {
+		archivo_compartido: 'Archivo compartido',
+		cambio_configuracion: 'Cambio de configuración',
+		acceso_evidencia: 'Consulta de evidencia',
+	}
+	const MODOS = {
+		normal: ['Normal', 'Aplica la acción de cada regla: alerta y, si la regla lo indica, oculta el dato.'],
+		solo_alertar: ['Solo alertar', 'Interruptor de emergencia: sigue alertando, pero nunca oculta datos.'],
+		desactivado: ['Desactivado', 'No analiza ningún mensaje. Talk funciona sin protección.'],
+	}
+
+	// ------------------------------------------------------------------
+	// Utilidades
+	// ------------------------------------------------------------------
+
+	function el(etiqueta, atributos, ...hijos) {
+		const e = document.createElement(etiqueta)
+		for (const [k, v] of Object.entries(atributos || {})) {
+			if (v === null || v === undefined || v === false) {
+				continue
+			}
+			if (k === 'class') {
+				e.className = v
+			} else if (k === 'text') {
+				e.textContent = v
+			} else if (k.startsWith('on') && typeof v === 'function') {
+				e.addEventListener(k.slice(2), v)
+			} else if (v === true) {
+				e.setAttribute(k, '')
+			} else {
+				e.setAttribute(k, String(v))
+			}
+		}
+		for (const h of hijos.flat(Infinity)) {
+			if (h === null || h === undefined || h === false) {
+				continue
+			}
+			e.append(h instanceof Node ? h : document.createTextNode(String(h)))
+		}
+		return e
+	}
+
+	async function api(nombre, { metodo = 'GET', datos = null, parametros = null } = {}) {
+		let url = rutas[nombre]
+		if (parametros) {
+			url += '?' + new URLSearchParams(parametros).toString()
+		}
+		const cabeceras = { requesttoken: token, Accept: 'application/json' }
+		if (datos) {
+			cabeceras['Content-Type'] = 'application/json'
+		}
+		const r = await fetch(url, {
+			method: metodo,
+			headers: cabeceras,
+			credentials: 'same-origin',
+			body: datos ? JSON.stringify(datos) : undefined,
+		})
+		let cuerpo = null
+		try {
+			cuerpo = await r.json()
+		} catch (e) {
+			// respuesta sin JSON
+		}
+		if (r.status === 403 || r.status === 401) {
+			throw new Error('No tiene permiso para esta sección. Pida a un administrador que se la delegue.')
+		}
+		if (!r.ok || (cuerpo && cuerpo.ok === false)) {
+			throw new Error((cuerpo && (cuerpo.error || cuerpo.message)) || 'Error del servidor (' + r.status + ').')
+		}
+		return cuerpo
+	}
+
+	let temporizadorAviso = null
+	function aviso(mensaje, tipo) {
+		const caja = document.getElementById('gsitg-aviso')
+		caja.textContent = mensaje
+		caja.className = 'gsitg-aviso gsitg-aviso--' + (tipo || 'ok')
+		caja.hidden = false
+		clearTimeout(temporizadorAviso)
+		temporizadorAviso = setTimeout(() => { caja.hidden = true }, tipo === 'error' ? 10000 : 5000)
+	}
+
+	function fecha(iso) {
+		if (!iso) {
+			return '—'
+		}
+		const d = new Date(iso)
+		return isNaN(d) ? iso : d.toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+	}
+
+	function insignia(severidad) {
+		return el('span', { class: 'gsitg-sev gsitg-sev--' + severidad, text: SEVERIDAD[severidad] || severidad })
+	}
+
+	function nombreRegla(id) {
+		if (OTRAS_REGLAS[id]) {
+			return OTRAS_REGLAS[id]
+		}
+		const r = estado && estado.reglas.find((x) => x.id === id)
+		return r ? r.nombre : id
+	}
+
+	function lineas(texto) {
+		return texto.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
+	}
+
+	function seleccion(valor, opciones, atributos) {
+		const s = el('select', atributos || {})
+		for (const [v, etiqueta] of opciones) {
+			const o = el('option', { value: v, text: etiqueta })
+			if (v === valor) {
+				o.selected = true
+			}
+			s.append(o)
+		}
+		return s
+	}
+
+	// ------------------------------------------------------------------
+	// Estado y pestañas
+	// ------------------------------------------------------------------
+
+	let estado = null
+	const panel = (nombre) => raiz.querySelector('[data-panel="' + nombre + '"]')
+
+	async function cargarEstado() {
+		estado = await api('estado')
+	}
+
+	function mostrarPestana(nombre) {
+		for (const b of raiz.querySelectorAll('.gsitg-tab')) {
+			b.setAttribute('aria-selected', b.dataset.tab === nombre ? 'true' : 'false')
+		}
+		for (const p of raiz.querySelectorAll('.gsitg-panel')) {
+			p.hidden = p.dataset.panel !== nombre
+		}
+		if (nombre === 'alertas') {
+			cargarAlertas()
+		} else if (nombre === 'config') {
+			cargarEstado().then(dibujarConfig).catch((e) => aviso(e.message, 'error'))
+		} else if (nombre === 'probar' && !panel('probar').firstChild) {
+			dibujarProbar()
+		}
+	}
+
+	for (const b of raiz.querySelectorAll('.gsitg-tab')) {
+		b.addEventListener('click', () => mostrarPestana(b.dataset.tab))
+	}
+
+	// ------------------------------------------------------------------
+	// Pestaña Alertas
+	// ------------------------------------------------------------------
+
+	const filtros = { dias: '1', severidad: 'baja', regla: '', autor: '', accion: '', pagina: 1 }
+	let temporizadorAuto = null
+
+	function dibujarAlertas() {
+		const p = panel('alertas')
+		p.replaceChildren()
+
+		const opcionesRegla = [['', 'Todas las reglas']]
+			.concat(estado.reglas.map((r) => [r.id, r.nombre]))
+			.concat(Object.entries(OTRAS_REGLAS))
+
+		const cambiar = (clave) => (ev) => {
+			filtros[clave] = ev.target.value
+			filtros.pagina = 1
+			cargarAlertas()
+		}
+		let espera = null
+		const autor = el('input', {
+			type: 'search', placeholder: 'Usuario', value: filtros.autor, 'aria-label': 'Filtrar por usuario',
+			oninput: (ev) => {
+				clearTimeout(espera)
+				espera = setTimeout(() => { filtros.autor = ev.target.value; filtros.pagina = 1; cargarAlertas() }, 400)
+			},
+		})
+		const auto = el('input', {
+			type: 'checkbox', id: 'gsitg-auto',
+			onchange: (ev) => {
+				clearInterval(temporizadorAuto)
+				if (ev.target.checked) {
+					temporizadorAuto = setInterval(cargarAlertas, 60000)
+				}
+			},
+		})
+
+		p.append(
+			el('div', { class: 'gsitg-filtros' },
+				seleccion(filtros.dias, [['1', 'Últimas 24 horas'], ['7', 'Últimos 7 días'], ['30', 'Últimos 30 días']],
+					{ 'aria-label': 'Período', onchange: cambiar('dias') }),
+				seleccion(filtros.severidad, [['baja', 'Todas las severidades'], ['media', 'Media o mayor'], ['alta', 'Alta o mayor'], ['critica', 'Solo crítica']],
+					{ 'aria-label': 'Severidad', onchange: cambiar('severidad') }),
+				seleccion(filtros.regla, opcionesRegla, { 'aria-label': 'Regla', onchange: cambiar('regla') }),
+				seleccion(filtros.accion, [['', 'Todas las acciones']].concat(Object.entries(ACCION)),
+					{ 'aria-label': 'Acción', onchange: cambiar('accion') }),
+				autor,
+				el('button', { type: 'button', text: 'Actualizar', onclick: () => cargarAlertas() }),
+				el('label', { class: 'gsitg-auto', for: 'gsitg-auto' }, auto, ' Actualizar cada minuto'),
+			),
+			el('div', { class: 'gsitg-resumen', id: 'gsitg-resumen' }),
+			el('div', { class: 'gsitg-tabla-envoltura' }, el('table', { class: 'gsitg-tabla', id: 'gsitg-tabla' })),
+			el('div', { class: 'gsitg-paginas', id: 'gsitg-paginas' }),
+		)
+	}
+
+	let consultaActual = 0
+	async function cargarAlertas() {
+		// Si se cambian filtros rápido, solo se dibuja la respuesta de la última consulta.
+		const numero = ++consultaActual
+		try {
+			if (!estado) {
+				await cargarEstado()
+			}
+			if (!document.getElementById('gsitg-tabla')) {
+				dibujarAlertas()
+			}
+			const datos = await api('alertas', { parametros: { ...filtros, porPagina: 50 } })
+			if (numero !== consultaActual) {
+				return
+			}
+			dibujarResumen(datos)
+			dibujarTabla(datos)
+		} catch (e) {
+			aviso(e.message, 'error')
+		}
+	}
+
+	function dibujarResumen(datos) {
+		const r = datos.resumen
+		const caja = document.getElementById('gsitg-resumen')
+		const periodo = { 1: 'últimas 24 horas', 7: 'últimos 7 días', 30: 'últimos 30 días' }[filtros.dias]
+		const tarjetas = ['critica', 'alta', 'media', 'baja'].map((s) =>
+			el('button', {
+				type: 'button',
+				class: 'gsitg-tarjeta gsitg-tarjeta--' + s + (filtros.severidad === s ? ' gsitg-tarjeta--activa' : ''),
+				title: 'Mostrar ' + SEVERIDAD[s].toLowerCase() + ' o mayor',
+				onclick: () => {
+					filtros.severidad = s
+					filtros.pagina = 1
+					dibujarAlertas()
+					cargarAlertas()
+				},
+			},
+			el('span', { class: 'gsitg-tarjeta-num', text: String(r.por_severidad[s] || 0) }),
+			el('span', { class: 'gsitg-tarjeta-txt', text: SEVERIDAD[s] })))
+		const reglas = Object.entries(r.por_regla).slice(0, 3)
+			.map(([id, n]) => nombreRegla(id) + ' (' + n + ')').join(' · ')
+		caja.replaceChildren(
+			el('div', { class: 'gsitg-tarjetas' }, tarjetas),
+			el('p', { class: 'gsitg-nota' },
+				r.total + ' alertas en las ' + periodo + '.',
+				reglas ? ' Reglas más frecuentes: ' + reglas + '.' : '',
+				datos.truncado ? ' Se muestran las 50 000 más recientes.' : ''),
+		)
+	}
+
+	function dibujarTabla(datos) {
+		const tabla = document.getElementById('gsitg-tabla')
+		const cabecera = el('thead', {}, el('tr', {},
+			['Fecha', 'Severidad', 'Regla', 'Acción', 'Autor', 'Sala o detalle', 'Archivo'].map((t) => el('th', { scope: 'col', text: t }))))
+		const cuerpo = el('tbody')
+		if (datos.alertas.length === 0) {
+			cuerpo.append(el('tr', {}, el('td', { colspan: '7', class: 'gsitg-vacio', text: 'No hay alertas con estos filtros.' })))
+		}
+		for (const a of datos.alertas) {
+			const fila = el('tr', { class: 'gsitg-fila', tabindex: '0', 'aria-expanded': 'false' },
+				el('td', { text: fecha(a.detectado) }),
+				el('td', {}, insignia(a.severidad)),
+				el('td', { text: nombreRegla(a.regla_id) }),
+				el('td', {}, el('span', { class: 'gsitg-accion gsitg-accion--' + a.accion, text: ACCION[a.accion] || a.accion || '—' })),
+				el('td', { text: a.autor || '—' }),
+				el('td', { class: 'gsitg-sala', text: a.sala_nombre || a.detalle || (a.caso ? 'Caso ' + a.caso : '—') }),
+				el('td', { text: a.archivo || '' }),
+			)
+			const detalle = el('tr', { class: 'gsitg-detalle', hidden: true }, el('td', { colspan: '7' }, detalleAlerta(a)))
+			const alternar = () => {
+				detalle.hidden = !detalle.hidden
+				fila.setAttribute('aria-expanded', detalle.hidden ? 'false' : 'true')
+			}
+			fila.addEventListener('click', alternar)
+			fila.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar() } })
+			cuerpo.append(fila, detalle)
+		}
+		tabla.replaceChildren(cabecera, cuerpo)
+
+		const paginas = document.getElementById('gsitg-paginas')
+		paginas.replaceChildren(
+			el('button', { type: 'button', text: '‹ Anterior', disabled: datos.pagina <= 1, onclick: () => { filtros.pagina--; cargarAlertas() } }),
+			el('span', { text: 'Página ' + datos.pagina + ' de ' + datos.paginas + ' · ' + datos.total + ' alertas' }),
+			el('button', { type: 'button', text: 'Siguiente ›', disabled: datos.pagina >= datos.paginas, onclick: () => { filtros.pagina++; cargarAlertas() } }),
+		)
+	}
+
+	function detalleAlerta(a) {
+		const datos = [
+			['Identificador', a.alerta_id],
+			['Evento', a.evento],
+			['Fecha del mensaje', a.fecha_mensaje ? fecha(a.fecha_mensaje) : null],
+			['Tipo de sala', a.sala_tipo],
+			['Participantes', a.participantes ? a.participantes.length + ': ' + a.participantes.join(', ') : null],
+			['Coincidencias', a.coincidencias],
+			['Fragmentos', a.fragmentos && a.fragmentos.length ? a.fragmentos.join('   ') : null],
+			['Detalle', a.detalle],
+			['Nota', a.nota],
+			['Caso', a.caso],
+			['Solicitante', a.solicitante],
+			['Dirección IP', a.ip],
+		].filter(([, v]) => v !== null && v !== undefined && v !== '')
+		const lista = el('dl', { class: 'gsitg-dl' }, datos.map(([k, v]) => [el('dt', { text: k }), el('dd', { text: String(v) })]))
+		if (!a.evidencia || a.regla_id === 'acceso_evidencia') {
+			return lista
+		}
+		const comando = 'docker exec -it -u www-data CONTENEDOR php occ gsi-talk-guard:evidencia:leer ' + a.evidencia +
+			' --caso CORRELATIVO --solicitante USUARIO'
+		return el('div', {}, lista,
+			el('p', { class: 'gsitg-nota', text: 'Hay una copia cifrada del mensaje original. Solo puede leerse en el servidor, con la clave privada y dentro de un caso autorizado:' }),
+			el('div', { class: 'gsitg-comando' },
+				el('code', { text: comando }),
+				el('button', {
+					type: 'button', text: 'Copiar',
+					onclick: () => navigator.clipboard.writeText(comando).then(() => aviso('Comando copiado.'), () => aviso('No se pudo copiar.', 'error')),
+				})))
+	}
+
+	// ------------------------------------------------------------------
+	// Pestaña Configuración
+	// ------------------------------------------------------------------
+
+	function tarjeta(titulo, descripcion, ...contenido) {
+		return el('section', { class: 'gsitg-caja' },
+			el('h3', { text: titulo }),
+			descripcion ? el('p', { class: 'gsitg-nota', text: descripcion }) : null,
+			contenido)
+	}
+
+	function dibujarConfig() {
+		const p = panel('config')
+		const hayEnmascaramiento = estado.reglas.some((r) => r.accion === 'enmascarar')
+
+		// Modo
+		const selModo = seleccion(estado.modo, Object.entries(MODOS).map(([k, [n]]) => [k, n]), { 'aria-label': 'Modo' })
+		const descModo = el('p', { class: 'gsitg-nota', text: MODOS[estado.modo][1] })
+		selModo.addEventListener('change', () => { descModo.textContent = MODOS[selModo.value][1] })
+		const guardarModo = async (modo) => {
+			try {
+				await api('modo', { metodo: 'POST', datos: { modo } })
+				aviso('Modo cambiado a «' + MODOS[modo][0] + '».')
+				await cargarEstado()
+				dibujarConfig()
+			} catch (e) {
+				aviso(e.message, 'error')
+			}
+		}
+		const cajaModo = tarjeta('Modo de funcionamiento', null,
+			el('div', { class: 'gsitg-fila-form' },
+				el('span', { class: 'gsitg-modo gsitg-modo--' + estado.modo, text: 'Actual: ' + MODOS[estado.modo][0] }),
+				selModo,
+				el('button', {
+					type: 'button', class: 'primary', text: 'Cambiar modo',
+					onclick: () => {
+						if (selModo.value === estado.modo) {
+							return
+						}
+						if (selModo.value === 'desactivado' && !window.confirm('Con el modo desactivado, Talk no tendrá ninguna protección ni alertas. ¿Continuar?')) {
+							return
+						}
+						guardarModo(selModo.value)
+					},
+				})),
+			descModo,
+			estado.modo === 'normal' && hayEnmascaramiento
+				? el('button', {
+					type: 'button', class: 'gsitg-emergencia', text: 'Detener el ocultamiento ahora',
+					onclick: () => {
+						if (window.confirm('Se dejará de ocultar datos de inmediato. Las alertas seguirán funcionando. ¿Continuar?')) {
+							guardarModo('solo_alertar')
+						}
+					},
+				})
+				: null,
+			el('p', { class: 'gsitg-nota' },
+				'Clave de evidencias: ',
+				el('strong', { text: estado.clave_publica ? 'configurada' : 'NO configurada' }),
+				estado.clave_publica ? '' : '. Sin ella no se ocultan datos ni se guardan evidencias. Se genera solo en el servidor: occ gsi-talk-guard:claves:generar'),
+		)
+
+		// Alcance y notificaciones
+		const txtPiloto = el('textarea', { rows: '3', placeholder: 'Vacío = todos los usuarios', 'aria-label': 'Usuarios del piloto' })
+		txtPiloto.value = estado.usuarios_piloto.join('\n')
+		const txtCorreo = el('textarea', { rows: '2', placeholder: 'Vacío = sin correo', 'aria-label': 'Correos de alerta' })
+		txtCorreo.value = estado.correo_para.join('\n')
+		const selSev = seleccion(estado.severidad_minima_correo,
+			[['alta', 'Alta o mayor'], ['media', 'Media o mayor'], ['baja', 'Todas']], { 'aria-label': 'Severidad mínima del correo' })
+		const chkAvisar = el('input', { type: 'checkbox', id: 'gsitg-avisar' })
+		chkAvisar.checked = estado.avisar_usuario
+		const cajaAlcance = tarjeta('Alcance y notificaciones', null,
+			el('label', { class: 'gsitg-etiqueta', text: 'Usuarios del piloto (uno por línea, identificador interno de Nextcloud)' }), txtPiloto,
+			el('label', { class: 'gsitg-etiqueta', text: 'Enviar alertas por correo a (uno por línea)' }), txtCorreo,
+			el('div', { class: 'gsitg-fila-form' }, el('label', { class: 'gsitg-etiqueta', text: 'Severidad mínima del correo' }), selSev),
+			el('div', { class: 'gsitg-fila-form' }, chkAvisar, el('label', { for: 'gsitg-avisar', text: 'Avisar al autor cuando se oculte un dato de su mensaje' })),
+			el('button', {
+				type: 'button', class: 'primary', text: 'Guardar',
+				onclick: async () => {
+					try {
+						const r = await api('config', {
+							metodo: 'POST',
+							datos: {
+								usuarios_piloto: lineas(txtPiloto.value),
+								correo_para: lineas(txtCorreo.value),
+								severidad_minima_correo: selSev.value,
+								avisar_usuario: chkAvisar.checked,
+							},
+						})
+						aviso(r.cambios ? 'Configuración guardada.' : 'No había cambios que guardar.')
+						await cargarEstado()
+					} catch (e) {
+						aviso(e.message, 'error')
+					}
+				},
+			}))
+
+		// Dominios
+		const txtDom = el('textarea', { rows: '3', 'aria-label': 'Dominios institucionales' })
+		txtDom.value = estado.dominios.join('\n')
+		const cajaDominios = tarjeta('Dominios institucionales',
+			'Los correos y enlaces de estos dominios (y sus subdominios) no generan alertas de destino externo.',
+			txtDom,
+			el('button', {
+				type: 'button', class: 'primary', text: 'Guardar dominios',
+				onclick: async () => {
+					try {
+						const r = await api('dominios', { metodo: 'POST', datos: { dominios: lineas(txtDom.value) } })
+						txtDom.value = r.dominios.join('\n')
+						aviso('Dominios guardados.')
+					} catch (e) {
+						aviso(e.message, 'error')
+					}
+				},
+			}))
+
+		// Reglas
+		const filas = estado.reglas.map((r) => {
+			let celdaAccion
+			if (!r.puede_enmascarar) {
+				celdaAccion = el('span', { class: 'gsitg-nota', text: 'Solo alerta' })
+			} else {
+				const sel = seleccion(r.accion, [['alertar', 'Alertar'], ['enmascarar', 'Ocultar y alertar']],
+					{ 'aria-label': 'Acción de ' + r.nombre, disabled: !estado.clave_publica && r.accion === 'alertar' })
+				sel.addEventListener('change', async () => {
+					const nueva = sel.value
+					const texto = nueva === 'enmascarar'
+						? '«' + r.nombre + '»: desde ahora el dato se ocultará en Talk antes de que lo vean los participantes, y el autor recibirá un aviso.\n\n¿Ya se informó a los usuarios y lo aprobó Consultoría Jurídica?'
+						: '«' + r.nombre + '»: el dato dejará de ocultarse y solo se generará una alerta. ¿Continuar?'
+					if (!window.confirm(texto)) {
+						sel.value = r.accion
+						return
+					}
+					try {
+						await api('regla', { metodo: 'POST', datos: { id: r.id, accion: nueva } })
+						r.accion = nueva
+						aviso('Regla «' + r.nombre + '» actualizada.')
+						await cargarEstado()
+						dibujarConfig()
+					} catch (e) {
+						sel.value = r.accion
+						aviso(e.message, 'error')
+					}
+				})
+				celdaAccion = sel
+			}
+			return el('tr', {},
+				el('td', {}, el('div', { text: r.nombre }), el('code', { class: 'gsitg-id', text: r.id })),
+				el('td', {}, insignia(r.severidad)),
+				el('td', { class: 'gsitg-num', text: String(r.alertas_7_dias) }),
+				el('td', {}, celdaAccion))
+		})
+		const cajaReglas = tarjeta('Reglas',
+			'«Ocultar» solo está disponible en las reglas que detectan un dato concreto (cuentas, tarjetas, credenciales, cédulas). Las de palabras clave siempre solo alertan. Para editar patrones o palabras, use occ gsi-talk-guard:reglas:exportar / importar.',
+			el('div', { class: 'gsitg-tabla-envoltura' },
+				el('table', { class: 'gsitg-tabla' },
+					el('thead', {}, el('tr', {}, ['Regla', 'Severidad', 'Alertas (7 días)', 'Acción'].map((t) => el('th', { scope: 'col', text: t })))),
+					el('tbody', {}, filas))))
+
+		p.replaceChildren(cajaModo, cajaAlcance, cajaDominios, cajaReglas)
+	}
+
+	// ------------------------------------------------------------------
+	// Pestaña Probar reglas
+	// ------------------------------------------------------------------
+
+	function dibujarProbar() {
+		const p = panel('probar')
+		const texto = el('textarea', { rows: '4', placeholder: 'Escriba un mensaje de ejemplo, por ejemplo: la cuenta es 0102-0000-00-0000000019', 'aria-label': 'Texto a probar' })
+		const resultado = el('div', { class: 'gsitg-resultado', 'aria-live': 'polite' })
+		p.replaceChildren(
+			tarjeta('Probar reglas', 'El texto no se envía a Talk ni genera alertas. Use solo datos ficticios.',
+				texto,
+				el('button', {
+					type: 'button', class: 'primary', text: 'Probar',
+					onclick: async () => {
+						try {
+							const r = await api('probar', { metodo: 'POST', datos: { texto: texto.value } })
+							dibujarResultado(resultado, r)
+						} catch (e) {
+							aviso(e.message, 'error')
+						}
+					},
+				}),
+				resultado))
+	}
+
+	function dibujarResultado(caja, r) {
+		if (r.hallazgos.length === 0) {
+			caja.replaceChildren(el('p', { class: 'gsitg-ok', text: 'Sin coincidencias: este mensaje no generaría alertas.' }))
+			return
+		}
+		const lista = el('ul', { class: 'gsitg-hallazgos' }, r.hallazgos.map((h) =>
+			el('li', {}, insignia(h.severidad), ' ', el('strong', { text: h.regla }),
+				' · ' + (h.accion === 'enmascarar' ? 'ocultar' : 'alertar') + ' · ',
+				el('code', { text: h.fragmentos.join('   ') }))))
+		const partes = [el('p', { text: r.hallazgos.length + (r.hallazgos.length === 1 ? ' regla coincide:' : ' reglas coinciden:') }), lista]
+		if (r.enmascarado !== null) {
+			partes.push(
+				el('p', { text: r.se_aplicaria ? 'Los participantes verían:' : 'Si el ocultamiento estuviera activo, los participantes verían:' }),
+				el('blockquote', { class: 'gsitg-vista', text: r.enmascarado }))
+		}
+		caja.replaceChildren(...partes)
+	}
+
+	// ------------------------------------------------------------------
+	cargarAlertas()
+})()
