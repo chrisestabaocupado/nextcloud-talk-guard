@@ -10,6 +10,13 @@ Pasos extra: ninguno | descripción
 - Cambio
 ```
 
+## 1.3.1 — 2026-11-10
+Compatibilidad: Nextcloud 35 · Talk 25
+Migraciones: sí (corrige la migración pendiente de `clave_id` para conservar las evidencias anteriores con `NULL`)
+Pasos extra: repetir `occ upgrade` después de instalar esta versión correctiva.
+- La migración agrega `clave_id` como columna nullable, compatible con las evidencias históricas sin identificador.
+- Si un intento anterior dejó la columna creada, la migración la modifica para permitir `NULL`.
+
 ## 1.3.0 — 2026-11-10
 Compatibilidad: Nextcloud 35 · Talk 25
 Migraciones: no

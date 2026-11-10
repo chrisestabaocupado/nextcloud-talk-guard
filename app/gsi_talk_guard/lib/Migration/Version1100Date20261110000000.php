@@ -17,7 +17,16 @@ class Version1100Date20261110000000 extends SimpleMigrationStep {
 		if ($schema->hasTable('gsitg_evidencias')) {
 			$t = $schema->getTable('gsitg_evidencias');
 			if (!$t->hasColumn('clave_id')) {
-				$t->addColumn('clave_id', Types::STRING, ['notnull' => true, 'length' => 32, 'default' => '']);
+				// Las filas creadas antes de esta migración no tienen clave_id.
+				// Nextcloud no permite añadir una columna STRING NOT NULL con
+				// un valor por defecto vacío; NULL representa correctamente esas
+				// evidencias antiguas y el lector ya lo admite.
+				$t->addColumn('clave_id', Types::STRING, ['notnull' => false, 'length' => 32]);
+			} else {
+				// También corrige una columna creada parcialmente por un intento
+				// anterior, si la base de datos llegó a conservarla como NOT NULL.
+				$t->getColumn('clave_id')->setNotnull(false);
+				$t->getColumn('clave_id')->setDefault(null);
 			}
 		}
 		return $schema;
