@@ -96,6 +96,14 @@ La versión debe ser `X.Y.Z` y mayor que la actual; Nextcloud solo ejecuta la ac
 
 **4.3 Reemplace la app en modo de mantenimiento:**
 
+Si instaló el worker permanente de correo, deténgalo primero desde `/opt/nextcloud`
+con los tres archivos Compose (ver `CORREO_INMEDIATO.md`). Debe recargar el código
+nuevo al volver a arrancar; manténgalo detenido durante el mantenimiento:
+
+```bash
+docker compose -f compose.yaml -f compose.override.yaml -f compose.gsi-worker.yaml stop gsi-worker
+```
+
 ```bash
 occ maintenance:mode --on
 docker exec "$NC" rm -rf /var/www/html/custom_apps/gsi_talk_guard
@@ -116,6 +124,13 @@ occ app:list | grep gsi_talk_guard
 ```
 
 **Verificación:** aparece `gsi_talk_guard: X.Y.Z`. Continúe con la sección 5 antes de dar la actualización por terminada.
+
+Si usa el worker permanente, inícielo de nuevo desde `/opt/nextcloud` después de
+salir del mantenimiento:
+
+```bash
+docker compose -f compose.yaml -f compose.override.yaml -f compose.gsi-worker.yaml up -d --no-deps gsi-worker
+```
 
 ## 5. Verificación posterior
 
@@ -149,7 +164,7 @@ occ user:delete prueba.gsi1; occ user:delete prueba.gsi2; unset CLAVE_PRUEBA
 
 El resultado debe terminar con `0 fallas`. Si hay usuarios del piloto definidos, agregue temporalmente `prueba.gsi1`, o la prueba 2 mostrará `INFO` en lugar de `OK`.
 
-**5.4 Correo.** En los 5 minutos siguientes debe llegar a `infosec@imcpbdc.com.ve` el aviso de las alertas de la prueba.
+**5.4 Correo.** Con el worker permanente activo, el envío de las alertas debe iniciar en segundos; con solo cron puede esperar aproximadamente cinco minutos. Compruebe la recepción en `infosec@imcpbdc.com.ve` y que el correo muestre nombre, cuenta y correo del autor, nombre legible de sala y participantes. La entrega final depende del servidor SMTP. Revise `docs/CORREO_INMEDIATO.md` para instalar o verificar el worker, conservando el cron general.
 
 **Verificación:** estado sin cambios, sin errores nuevos en el registro, la web carga, la prueba de humo pasa y llega el correo. Solo entonces anote la actualización en la sección 9.
 

@@ -202,7 +202,7 @@
 		}
 		let espera = null
 		const autor = el('input', {
-			type: 'search', placeholder: 'Usuario', value: filtros.autor, 'aria-label': 'Filtrar por usuario',
+			type: 'search', placeholder: 'Nombre, usuario o correo', value: filtros.autor, 'aria-label': 'Filtrar por usuario',
 			oninput: (ev) => {
 				clearTimeout(espera)
 				espera = setTimeout(() => { filtros.autor = ev.target.value; filtros.pagina = 1; cargarAlertas() }, 400)
@@ -303,7 +303,7 @@
 				el('td', {}, insignia(a.severidad)),
 				el('td', { text: nombreRegla(a.regla_id) }),
 				el('td', {}, el('span', { class: 'gsitg-accion gsitg-accion--' + a.accion, text: ACCION[a.accion] || a.accion || '—' })),
-				el('td', { text: a.autor || '—' }),
+				el('td', { class: 'gsitg-persona' }, identidadPersona(a.autor_ficha, a.autor)),
 				el('td', { class: 'gsitg-sala', text: a.sala_nombre || a.detalle || (a.caso ? 'Caso ' + a.caso : '—') }),
 				el('td', { text: a.archivo || '' }),
 			)
@@ -331,33 +331,75 @@
 		)
 	}
 
+	function identidadPersona(ficha, id = '') {
+		if (!ficha) return el('span', { text: id || '—' })
+		return el('div', {},
+			el('strong', { text: ficha.nombre || ficha.id || '—' }),
+			ficha.usuario ? el('div', { class: 'gsitg-identidad-secundaria', text: ficha.usuario }) : null,
+			ficha.correo ? el('div', { class: 'gsitg-identidad-secundaria', text: ficha.correo }) : null)
+	}
+
+	function enlaceLocal(url, texto) {
+		try {
+			const destino = new URL(url, window.location.href)
+			if (!['http:', 'https:'].includes(destino.protocol) || destino.origin !== window.location.origin) return null
+			return el('a', { href: destino.href, target: '_blank', rel: 'noopener noreferrer', text: texto })
+		} catch (e) { return null }
+	}
+
+	function fichaPersona(ficha, titulo) {
+		if (!ficha) return null
+		const campos = {
+			id: 'ID interno', tipo: 'Tipo de cuenta', telefono: 'Teléfono', organizacion: 'Organización',
+			departamento: 'Departamento', cargo: 'Cargo', grupos: 'Grupos', estado: 'Estado', origen: 'Directorio',
+		}
+		return el('section', { class: 'gsitg-ficha' },
+			el('h3', { text: titulo }), identidadPersona(ficha),
+			el('dl', { class: 'gsitg-dl gsitg-dl--modal' }, Object.entries(campos)
+				.filter(([k]) => ficha[k] && (!Array.isArray(ficha[k]) || ficha[k].length))
+				.map(([k, etiqueta]) => [el('dt', { text: etiqueta }), el('dd', { text: Array.isArray(ficha[k]) ? ficha[k].join(', ') : ficha[k] })])),
+			ficha.perfil_url ? enlaceLocal(ficha.perfil_url, 'Abrir perfil en Nextcloud') : null)
+	}
+
 	function detalleAlerta(a) {
 		const etiquetas = {
 			origen: 'Origen', alerta_id: 'Identificador de alerta', detectado: 'Fecha de detección', nivel: 'Nivel',
 			evento: 'Evento', regla_id: 'Identificador de regla', regla: 'Regla', severidad: 'Severidad', accion: 'Acción',
 			coincidencias: 'Cantidad de coincidencias', fragmentos: 'Fragmentos detectados', autor: 'Autor', tipo_autor: 'Tipo de autor',
 			mensaje_id: 'Identificador del mensaje', fecha_mensaje: 'Fecha del mensaje', sala_token: 'Token de sala',
-			sala_nombre: 'Sala', sala_tipo: 'Tipo de sala', participantes: 'Participantes', archivo: 'Archivo',
+			sala_nombre: 'Sala', sala_nombre_original: 'Nombre original de sala', sala_tipo: 'Tipo de sala',
+			sala_url: 'Enlace a la sala', participantes: 'Identificadores de participantes', num_participantes: 'Cantidad de participantes', archivo: 'Archivo',
 			evidencia: 'Identificador de evidencia', clave_id: 'ID de clave', huella_sha256: 'Huella SHA-256',
 			nota: 'Nota', detalle: 'Detalle', caso: 'Caso', solicitante: 'Solicitante', ip: 'Dirección IP',
 		}
 		const valor = (clave, dato) => {
 			if (clave === 'detectado' || clave === 'fecha_mensaje') return fecha(dato)
-			if (Array.isArray(dato)) return dato.length ? dato.join(', ') : '—'
+			if (Array.isArray(dato)) return dato.length ? dato.map((v) => typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)).join(', ') : '—'
 			if (dato && typeof dato === 'object') return JSON.stringify(dato, null, 2)
 			return String(dato)
 		}
-		const datos = Object.entries(a).filter(([, v]) => v !== null && v !== undefined && v !== '')
+		const fichas = ['autor_ficha', 'solicitante_ficha', 'participantes_fichas']
+		const datos = Object.entries(a).filter(([k, v]) => !fichas.includes(k) && v !== null && v !== undefined && v !== '')
 		const lista = el('dl', { class: 'gsitg-dl gsitg-dl--modal' }, datos.map(([k, v]) => [
 			el('dt', { text: etiquetas[k] || k }),
 			el('dd', { text: valor(k, v) }),
 		]))
+		const contenido = el('div', {},
+			fichaPersona(a.autor_ficha, 'Persona que generó la alerta'),
+			fichaPersona(a.solicitante_ficha, 'Persona solicitante'),
+			a.sala_token ? el('section', { class: 'gsitg-ficha' },
+				el('h3', { text: 'Sala de Talk' }), el('p', { text: a.sala_nombre || 'Sin nombre' }),
+				a.sala_url ? enlaceLocal(a.sala_url, 'Abrir sala en Talk') : null) : null,
+			a.participantes_fichas?.length ? el('section', { class: 'gsitg-ficha' },
+				el('h3', { text: 'Participantes' }),
+				el('ul', { class: 'gsitg-participantes' }, a.participantes_fichas.map((p) => el('li', {}, identidadPersona(p))))) : null,
+			el('h3', { text: 'Datos de la alerta' }), lista)
 		if (!a.evidencia || a.regla_id === 'acceso_evidencia') {
-			return lista
+			return contenido
 		}
 		const comando = 'docker exec -it -u www-data CONTENEDOR php occ gsi-talk-guard:evidencia:leer ' + a.evidencia +
 			' --caso CORRELATIVO --solicitante USUARIO'
-		return el('div', {}, lista,
+		return el('div', {}, contenido,
 			el('p', { class: 'gsitg-nota', text: 'Hay una copia cifrada del mensaje original. Solo puede leerse en el servidor, con la clave privada y dentro de un caso autorizado:' }),
 			el('div', { class: 'gsitg-comando' },
 				el('code', { text: comando }),

@@ -103,6 +103,13 @@ const verificar = (desc, cond) => {
 		regla_id: 'cuenta_bancaria', severidad: 'alta', nivel: 3, accion: 'enmascarado', autor: 'ana.perez',
 		sala_nombre: 'Finanzas', sala_tipo: 'grupo', participantes: ['ana.perez', 'luis.rojas'], num_participantes: 2,
 		fragmentos: ['0102****6789'], evidencia: 'prueba-1',
+		autor_ficha: { id: 'ana.perez', tipo: 'users', nombre: 'Ana Pérez', usuario: 'ana.perez', correo: 'ana@example.test',
+			departamento: 'Seguridad', cargo: 'Analista', perfil_url: BASE + '/index.php/u/ana.perez' },
+		participantes_fichas: [
+			{ id: 'ana.perez', nombre: 'Ana Pérez', usuario: 'ana.perez', correo: 'ana@example.test' },
+			{ id: 'luis.rojas', nombre: 'Luis Rojas', usuario: 'luis.rojas', correo: 'luis@example.test' },
+		],
+		sala_token: 'sala-prueba', sala_url: BASE + '/index.php/call/sala-prueba',
 		}) + '\n')
 
 	const html = await iniciarSesion()
@@ -112,6 +119,9 @@ const verificar = (desc, cond) => {
 	w.fetch = (url, op = {}) => pedir(url, op)
 	w.confirm = () => true
 	w.navigator.clipboard = { writeText: () => Promise.resolve() }
+	// jsdom no implementa la API nativa de dialog.
+	w.HTMLDialogElement.prototype.showModal = function () { this.open = true }
+	w.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new w.Event('close')) }
 	const elegir = (sel, valor) => { sel.value = valor; sel.dispatchEvent(new w.Event('change', { bubbles: true })) }
 	const boton = (panel, texto) => [...d.querySelectorAll('[data-panel="' + panel + '"] button')].find((b) => b.textContent === texto)
 	const filas = () => [...d.querySelectorAll('#gsitg-tabla tbody tr.gsitg-fila')]
@@ -134,11 +144,16 @@ const verificar = (desc, cond) => {
 		verificar('la paginación indica el total', /Página 1 de \d+ · \d+ alertas/.test(d.getElementById('gsitg-paginas').textContent))
 
 		const filaMensaje = filas().find((f) => f.children[2].textContent.startsWith('Número de'))
+		verificar('la tabla identifica al autor por nombre, cuenta y correo', /Ana Pérez/.test(filaMensaje.children[4].textContent)
+			&& /ana.perez/.test(filaMensaje.children[4].textContent) && /ana@example.test/.test(filaMensaje.children[4].textContent))
 		filaMensaje.click()
-		const det = filaMensaje.nextElementSibling
-		verificar('el clic abre el detalle con participantes', !det.hidden && det.textContent.includes('Participantes'))
+		const det = d.querySelector('#gsitg-alerta-modal')
+		verificar('el clic abre el modal con participantes identificados', det.open && det.textContent.includes('Luis Rojas'))
 		verificar('el detalle no muestra «[object HTMLElement]»', !det.textContent.includes('[object'))
+		verificar('el detalle muestra la ficha profesional', det.textContent.includes('Seguridad') && det.textContent.includes('Analista'))
+		verificar('ofrece el enlace a la sala', !!det.querySelector('a[href="' + BASE + '/index.php/call/sala-prueba"]'))
 		verificar('el detalle ofrece el comando para leer la evidencia', det.textContent.includes('gsi-talk-guard:evidencia:leer'))
+		det.querySelector('.gsitg-modal__cerrar').click()
 
 		console.log('Pestaña Configuración')
 		d.querySelector('[data-tab="config"]').click()
@@ -155,11 +170,18 @@ const verificar = (desc, cond) => {
 		await hasta(() => d.querySelector('.gsitg-modo').textContent.includes('Normal'), 'volver a normal')
 		verificar('se puede volver al modo normal', /Modo:\s+normal/.test(occ('gsi-talk-guard:estado')))
 
-		elegir(d.querySelector('select[aria-label="Acción de Número de tarjeta de pago"]'), 'alertar')
+		await hasta(() => [...d.querySelectorAll('[data-panel="config"] tbody tr')].some((f) => f.textContent.includes('tarjeta')), 'reglas al volver al modo normal')
+		const tarjeta = [...d.querySelectorAll('[data-panel="config"] tbody tr')].find((f) => f.textContent.includes('Número de tarjeta'))
+		tarjeta.querySelector('button').click()
+		elegir(d.getElementById('gsitg-r-accion'), 'alertar')
+		d.querySelector('.gsitg-form-regla').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }))
 		await hasta(() => /tarjeta\s+\|\s+regex\s+\|\s+alta\s+\|\s+alertar/.test(occ('gsi-talk-guard:estado')), 'cambio de regla')
 		verificar('cambiar la acción de una regla se guarda', true)
 		await espera(800) // la página vuelve a dibujarse tras cambiar una regla
-		verificar('las reglas de palabras muestran «Solo alerta»', [...d.querySelectorAll('[data-panel="config"] tbody tr')].filter((f) => f.textContent.includes('Solo alerta')).length === 6)
+		const palabras = [...d.querySelectorAll('[data-panel="config"] tbody tr')].find((f) => f.textContent.includes('exfiltracion'))
+		palabras.querySelector('button').click()
+		verificar('las reglas de palabras no permiten ocultar', d.querySelector('#gsitg-r-accion option[value="enmascarar"]').disabled)
+		boton('config', 'Cancelar').click()
 
 		const piloto = () => d.querySelectorAll('[data-panel="config"] textarea')[0]
 		piloto().value = 'ana.perez\ncarla.diaz'

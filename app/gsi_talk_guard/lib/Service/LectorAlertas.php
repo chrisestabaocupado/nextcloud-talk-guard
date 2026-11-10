@@ -15,6 +15,7 @@ class LectorAlertas {
 
 	public function __construct(
 		private Settings $settings,
+		private ContextoAlertas $contexto,
 	) {
 	}
 
@@ -120,11 +121,16 @@ class LectorAlertas {
 			if ($regla !== '' && ($a['regla_id'] ?? '') !== $regla) {
 				return false;
 			}
-			if ($autor !== '' && !str_contains(mb_strtolower((string)($a['autor'] ?? '')), $autor)) {
-				return false;
-			}
 			if ($accion !== '' && ($a['accion'] ?? '') !== $accion) {
 				return false;
+			}
+			if ($autor !== '') {
+				$ficha = $a['autor_ficha'] ?? $this->contexto->persona((string)($a['autor'] ?? ''),
+					(string)($a['tipo_autor'] ?? 'users'), false);
+				$identidad = implode(' ', [$a['autor'] ?? '', $ficha['nombre'] ?? '', $ficha['usuario'] ?? '', $ficha['correo'] ?? '']);
+				if (!str_contains(mb_strtolower($identidad), $autor)) {
+					return false;
+				}
 			}
 			return true;
 		}));
@@ -135,7 +141,8 @@ class LectorAlertas {
 		$pagina = max(1, min($paginas, $pagina));
 
 		return [
-			'alertas' => array_slice($filtradas, ($pagina - 1) * $porPagina, $porPagina),
+			'alertas' => array_map(fn ($a) => $this->contexto->enriquecer($a),
+				array_slice($filtradas, ($pagina - 1) * $porPagina, $porPagina)),
 			'total' => $total,
 			'pagina' => $pagina,
 			'paginas' => $paginas,

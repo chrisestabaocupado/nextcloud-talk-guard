@@ -6,6 +6,7 @@ namespace OCA\GsiTalkGuard\Command;
 
 use OCA\GsiTalkGuard\Service\Alertas;
 use OCA\GsiTalkGuard\Service\Evidencias;
+use OCA\GsiTalkGuard\Service\ContextoAlertas;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputArgument;
@@ -18,6 +19,7 @@ class EvidenciaLeer extends Command {
 	public function __construct(
 		private Evidencias $evidencias,
 		private Alertas $alertas,
+		private ContextoAlertas $contexto,
 	) {
 		parent::__construct();
 	}
@@ -57,7 +59,7 @@ class EvidenciaLeer extends Command {
 			$output->writeln('<error>' . $ex->getMessage() . '</error>');
 			return 1;
 		} finally {
-			// La consulta también se informa a Wazuh.
+			// La consulta también genera una alerta local.
 			$this->alertas->emitir([
 				'alerta_id' => 'acceso-' . $id . '-' . time(),
 				'evento' => 'acceso_evidencia',
@@ -73,7 +75,10 @@ class EvidenciaLeer extends Command {
 
 		$output->writeln('Evidencia:   ' . $e['alerta_id']);
 		$output->writeln('Mensaje:     ' . $e['mensaje_id'] . ' en la sala ' . $e['sala_token']);
-		$output->writeln('Autor:       ' . $e['autor']);
+		$ficha = $this->contexto->persona($e['autor']);
+		$output->writeln('Autor:       ' . $ficha['nombre'] . ' (' . ($ficha['usuario'] ?: $ficha['id']) . ')', OutputInterface::OUTPUT_RAW);
+		$output->writeln('Correo:      ' . ($ficha['correo'] ?: 'no disponible'), OutputInterface::OUTPUT_RAW);
+		$output->writeln('ID interno:  ' . $e['autor'], OutputInterface::OUTPUT_RAW);
 		$output->writeln('Guardada:    ' . gmdate('c', $e['creado']));
 		$output->writeln('ID de clave: ' . $e['clave_id']);
 		$output->writeln('Integridad:  ' . ($e['integra'] ? 'íntegra (SHA-256 coincide)' : '<error>NO COINCIDE</error>'));

@@ -1,0 +1,30 @@
+# Copiar a /opt/nextcloud y combinar con compose.yaml y compose.override.yaml.
+# No sustituye al servicio cron: procesa únicamente los correos de GSI Talk Guard.
+services:
+  gsi-worker:
+    image: nextcloud:35-apache
+    restart: unless-stopped
+    user: www-data
+    working_dir: /var/www/html
+    entrypoint: ["php", "/var/www/html/occ"]
+    command:
+      - background-job:worker
+      - --interval=1
+      - --stop_after=1h
+      - 'OCA\GsiTalkGuard\BackgroundJob\EnviarCorreoAlerta'
+    environment:
+      REDIS_HOST: redis
+      PHP_MEMORY_LIMIT: 512M
+    volumes:
+      - nextcloud_data:/var/www/html
+      - ./ldap/ca.crt:/etc/ldap/imcpbdc-ca.crt:ro
+      - ./ldap/ldap.conf:/etc/ldap/ldap.conf:ro
+    extra_hosts:
+      - "SRV-IMCPBDC.IMCPBDC.local:172.16.101.220"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      app:
+        condition: service_started

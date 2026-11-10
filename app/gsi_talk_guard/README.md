@@ -122,7 +122,11 @@ Cada par tiene un ID. Las alertas con evidencia incluyen ese ID y el comando de 
 | Avisar al autor | `occ config:app:set gsi_talk_guard avisar_usuario --value=no` | Sí |
 | Ruta del archivo de alertas | `occ config:app:set gsi_talk_guard archivo_alertas --value=/ruta/alertas.jsonl` | `<datadirectory>/gsi_talk_guard/alertas.jsonl` |
 
-El correo usa la configuración SMTP de Nextcloud y se envía con los trabajos en segundo plano (cron). El correo nunca incluye el contenido del mensaje. No se necesita Wazuh: el almacenamiento y la consulta de alertas funcionan dentro de Nextcloud. El archivo JSONL permite diseñar un conector futuro, pero no se configura ni envía a un SIEM en esta etapa.
+El correo usa la configuración SMTP de Nextcloud y una cola de trabajos en segundo plano. Con cron puede esperar aproximadamente cinco minutos. Para iniciar los envíos en segundos, instale el worker continuo de `docs/CORREO_INMEDIATO.md` del repositorio; el cron general se conserva para las demás tareas. El correo nunca incluye el contenido del mensaje. No se necesita Wazuh: el almacenamiento y la consulta de alertas funcionan dentro de Nextcloud. El archivo JSONL permite diseñar un conector futuro, pero no se configura ni envía a un SIEM en esta etapa.
+
+Las alertas nuevas conservan la ficha profesional disponible del autor en `autor_ficha`: nombre, cuenta de usuario, correo, teléfono, organización, departamento, cargo, grupos, estado y enlace al perfil. En Active Directory la cuenta se obtiene de `sAMAccountName`, con alternativas `uid` y `userPrincipalName`; no se deduce del correo. Los datos ausentes no se inventan. Los IDs originales se mantienen en `autor` y `participantes` para auditoría. Las salas privadas muestran nombres en lugar de IDs y se incluye un enlace a Talk (abrirlo requiere los permisos normales de la sala).
+
+El panel muestra la ficha, las identidades de los participantes y los metadatos de la sala. Su filtro de autor permite buscar por nombre, cuenta, correo o ID. En alertas históricas sin ficha, el panel resuelve los datos actuales al consultar; no modifica el archivo original. Los correos incluyen hasta 20 participantes para respetar el tamaño de los trabajos; el panel muestra la lista completa. Si el directorio no responde o la cuenta fue eliminada, se conservan los datos disponibles y el ID.
 
 ### Aviso a los usuarios
 

@@ -43,6 +43,7 @@ class Guardian {
 		private INotificationManager $notificaciones,
 		private IURLGenerator $url,
 		private LoggerInterface $logger,
+		private ContextoAlertas $contexto,
 	) {
 	}
 
@@ -365,7 +366,7 @@ class Guardian {
 		if (in_array($sala->getType(), [1, 5], true)) {
 			$ids = json_decode($sala->getName(), true);
 			$otros = is_array($ids) ? array_values(array_diff(array_map('strval', $ids), [$autor])) : [];
-			return $otros !== [] ? 'tu conversación con ' . $otros[0] : 'una conversación privada';
+			return $otros !== [] ? 'tu conversación con ' . $this->contexto->persona($otros[0], 'users', false)['nombre'] : 'una conversación privada';
 		}
 		return $sala->getName() !== '' ? 'la conversación «' . $sala->getName() . '»' : 'una conversación';
 	}

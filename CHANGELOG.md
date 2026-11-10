@@ -10,6 +10,17 @@ Pasos extra: ninguno | descripción
 - Cambio
 ```
 
+## 1.5.0 — 2026-11-10
+Compatibilidad: Nextcloud 35 · Talk 25
+Migraciones: no
+Pasos extra: instalar el servicio opcional `gsi-worker` siguiendo `docs/CORREO_INMEDIATO.md`; conservar el cron general y detener el worker durante las actualizaciones.
+- Las alertas nuevas guardan la ficha del autor: nombre, cuenta, correo, teléfono, organización, departamento, cargo, grupos y estado, cuando están disponibles en Nextcloud/LDAP.
+- Las salas privadas muestran nombres legibles y las alertas incluyen fichas básicas de participantes y enlace a Talk. Los IDs originales se conservan para auditoría.
+- El panel, su API, los registros JSONL y los correos incluyen las identidades; el filtro de autor acepta nombre, cuenta, correo o ID. Las alertas antiguas se enriquecen al consultarlas, sin reescribir los archivos históricos.
+- Los correos incluyen la ficha de la persona, datos de la sala y hasta 20 participantes; el detalle completo permanece en el panel. Se elimina la referencia obsoleta a Wazuh.
+- Se registra el fallo cuando el servicio de correo devuelve destinatarios fallidos.
+- Se entrega un servicio Docker opcional que procesa los correos cada segundo y se reinicia automáticamente.
+
 ## 1.4.0 — 2026-11-10
 Compatibilidad: Nextcloud 35 · Talk 25
 Migraciones: no

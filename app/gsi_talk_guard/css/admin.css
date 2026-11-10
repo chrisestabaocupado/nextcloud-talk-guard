@@ -40,6 +40,12 @@
 .gsitg-fila { cursor: pointer; }
 .gsitg-fila:hover, .gsitg-fila:focus { background: var(--color-background-hover); outline: none; }
 .gsitg-sala { max-width: 320px; overflow-wrap: anywhere; }
+.gsitg-persona { min-width: 160px; max-width: 260px; overflow-wrap: anywhere; }
+.gsitg-identidad-secundaria { color: var(--color-text-maxcontrast); overflow-wrap: anywhere; }
+.gsitg-ficha { padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid var(--color-border); }
+.gsitg-ficha .gsitg-dl { margin-top: 12px; }
+.gsitg-ficha a { display: inline-block; padding: 8px 0; text-decoration: underline; }
+.gsitg-participantes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; padding: 0; list-style: none; }
 .gsitg-num { text-align: right; font-variant-numeric: tabular-nums; }
 .gsitg-vacio { text-align: center; color: var(--color-text-maxcontrast); padding: 24px !important; }
 .gsitg-id { color: var(--color-text-maxcontrast); font-size: 12px; }
@@ -70,6 +76,11 @@
 .gsitg-dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 4px 0; }
 .gsitg-dl dt { color: var(--color-text-maxcontrast); }
 .gsitg-dl dd { margin: 0; overflow-wrap: anywhere; }
+.gsitg .gsitg-modal { margin: auto; }
+.gsitg .gsitg-dl { padding: 0; }
+.gsitg .gsitg-dl dt, .gsitg .gsitg-dl dd { padding: 0; text-align: left; }
+.gsitg .gsitg-dl--modal { grid-template-columns: minmax(140px, .34fr) minmax(0, 1fr); gap: 8px 18px; }
+@media (max-width: 520px) { .gsitg .gsitg-dl--modal { grid-template-columns: 1fr; gap: 2px; } }
 .gsitg-comando { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .gsitg-comando code { background: var(--color-main-background); padding: 6px 8px; border-radius: 4px; overflow-wrap: anywhere; flex: 1; }
 

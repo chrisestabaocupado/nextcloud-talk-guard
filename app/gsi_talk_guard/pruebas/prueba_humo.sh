@@ -23,7 +23,7 @@ ocs() { # usuario clave método ruta [json]
 	curl -fsS -u "$1:$2" -X "$3" "$NC_URL/ocs/v2.php$4" -H "OCS-APIRequest: true" \
 		-H "Accept: application/json" -H "Content-Type: application/json" ${5:+-d "$5"}
 }
-json() { python3 -c "import json,sys; d=json.load(sys.stdin); assert d['ocs']['meta']['statuscode'] == 200, d['ocs']['meta']; print($1)"; }
+json() { python3 -c "import json,sys; d=json.load(sys.stdin); assert 200 <= d['ocs']['meta']['statuscode'] < 300, d['ocs']['meta']; print($1)"; }
 enviar() { # texto -> id
 	ocs "$USUARIO_A" "$CLAVE_A" POST "/apps/spreed/api/v1/chat/$SALA" \
 		"{\"message\": $(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1")}" \
