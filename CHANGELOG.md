@@ -21,6 +21,19 @@ Pasos extra: instalar el servicio opcional `gsi-worker` siguiendo `docs/CORREO_I
 - Se registra el fallo cuando el servicio de correo devuelve destinatarios fallidos.
 - Se entrega un servicio Docker opcional que procesa los correos cada segundo y se reinicia automáticamente.
 
+## 1.5.2 — 2026-11-11
+Compatibilidad: Nextcloud 35 · Talk 25
+Migraciones: no
+Pasos extra: ninguno.
+- Se fuerza el ajuste de texto en las celdas de alertas para prevalecer sobre el estilo global de Nextcloud que impedía envolver el contenido.
+
+## 1.5.1 — 2026-11-11
+Compatibilidad: Nextcloud 35 · Talk 25
+Migraciones: no
+Pasos extra: ninguno.
+- La tabla de alertas mantiene separadas sus columnas cuando hay nombres de sala, participantes o nombres de archivo largos; en pantallas estrechas permite desplazamiento horizontal.
+- Las etiquetas y valores largos del detalle de alerta se ajustan dentro de sus columnas sin encimarse.
+
 ## 1.4.0 — 2026-11-10
 Compatibilidad: Nextcloud 35 · Talk 25
 Migraciones: no

@@ -9,7 +9,7 @@
 Analiza mensajes, ediciones y archivos compartidos de Talk antes de guardarlos. Permite definir reglas de monitoreo configurables, genera alertas locales y, según la regla, puede ocultar coincidencias y guardar el original cifrado como evidencia. La integración con Wazuh/SIEM queda para una etapa posterior.
 
 Se administra desde Configuración de administración › GSI Talk Guard o con los comandos occ gsi-talk-guard:*]]></description>
-	<version>1.5.0</version>
+	<version>1.5.2</version>
 	<licence>agpl</licence>
 	<author>Gerencia de Seguridad de la Información - IMCP</author>
 	<namespace>GsiTalkGuard</namespace>

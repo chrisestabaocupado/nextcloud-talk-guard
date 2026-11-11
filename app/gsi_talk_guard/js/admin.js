@@ -232,7 +232,7 @@
 				el('label', { class: 'gsitg-auto', for: 'gsitg-auto' }, auto, ' Actualizar cada minuto'),
 			),
 			el('div', { class: 'gsitg-resumen', id: 'gsitg-resumen' }),
-			el('div', { class: 'gsitg-tabla-envoltura' }, el('table', { class: 'gsitg-tabla', id: 'gsitg-tabla' })),
+			el('div', { class: 'gsitg-tabla-envoltura' }, el('table', { class: 'gsitg-tabla gsitg-tabla--alertas', id: 'gsitg-tabla' })),
 			el('div', { class: 'gsitg-paginas', id: 'gsitg-paginas' }),
 			modal,
 		)
