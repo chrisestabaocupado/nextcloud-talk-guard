@@ -3,6 +3,8 @@
 Preparado para la instalación Docker del IMCP en `/opt/nextcloud`.
 El cambio de la app no requiere migraciones de base de datos.
 
+> **Guía específica de la entrega 1.5.0 (10 de noviembre de 2026).** El código fuente actual de este repositorio es 1.5.2. No use los nombres de paquete ni la versión de esta guía para una entrega posterior; consulte [`docs/ACTUALIZACION.md`](../docs/ACTUALIZACION.md) y el changelog de la versión que vaya a instalar.
+
 ## 1. Copiar la entrega
 
 Copie `gsi_talk_guard-1.5.0-entrega.tar.gz` a `/tmp/` del servidor. Por ejemplo,

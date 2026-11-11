@@ -1,6 +1,6 @@
 # Instalación del IMCP (preproducción)
 
-Datos confirmados el 10 de noviembre de 2026. Ninguno es secreto; las contraseñas y la clave privada de evidencias **no** van en este repositorio.
+**Instantánea operativa confirmada el 10 de noviembre de 2026.** Describe el entorno de preproducción en esa fecha; no confirma el estado actual del servidor. Antes de ejecutar procedimientos, verifique con el operador los contenedores, versiones y rutas. Los datos aquí listados no son secretos; las contraseñas y la clave privada de evidencias **no** van en este repositorio.
 
 | Dato | Valor |
 | --- | --- |
@@ -18,7 +18,9 @@ Datos confirmados el 10 de noviembre de 2026. Ninguno es secreto; las contraseñ
 | Correo de alertas | `infosec@imcpbdc.com.ve`, desde severidad media |
 | Cron | Contenedor `nextcloud-cron-1`; `backgroundjobs_mode` = `cron` |
 | Wazuh | No se usa por ahora |
-| Versiones | Nextcloud 35.0.2, Talk 25.0.7, GSI Talk Guard 1.1.0 |
+| Versiones verificadas en esa fecha | Nextcloud 35.0.2, Talk 25.0.7, GSI Talk Guard 1.1.0 |
+
+La versión actual del código de este repositorio está indicada en `app/gsi_talk_guard/appinfo/info.xml`; no debe inferirse a partir de la versión registrada en esta instantánea histórica.
 
 Atajos usados en toda la documentación:
 

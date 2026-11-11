@@ -1,6 +1,8 @@
-# Plan de remediación de GSI Talk Guard
+# Plan de remediación histórico de GSI Talk Guard
 
-**Base:** revisión del repositorio en su estado actual, versión 1.1.0.  
+> Este documento conserva el plan elaborado durante la revisión de la versión 1.1.0. No representa por sí solo una lista vigente de tareas pendientes. Para el comportamiento actual, consulte el código, `CHANGELOG.md` y las guías operativas.
+
+**Base histórica:** revisión del repositorio en la versión 1.1.0.
 **Objetivo:** hacer que el enmascaramiento conserve evidencia recuperable, que la rotación de claves no inutilice evidencias previas y que las pruebas detecten fallos reales antes de actualizar la app.
 
 ## Prioridades

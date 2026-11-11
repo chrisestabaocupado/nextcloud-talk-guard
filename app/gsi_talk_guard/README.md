@@ -2,7 +2,7 @@
 
 App de Nextcloud de la Gerencia de Seguridad de la Información (IMCP). Analiza mensajes, ediciones y archivos compartidos de Talk **antes de guardarlos**, genera alertas locales y permite definir reglas de monitoreo. Según la regla, puede ocultar coincidencias, guardar el original cifrado como evidencia y avisar al autor. La integración con Wazuh/SIEM se abordará en una etapa posterior.
 
-Versión 1.4.0. Compatible con Nextcloud 35 y Talk 25; validar en preproducción antes de desplegar.
+La versión del código fuente se define en `appinfo/info.xml` (actualmente **1.5.2**; consulte [`CHANGELOG.md`](../../CHANGELOG.md)). La app declara compatibilidad con Nextcloud 35. Los eventos internos de Talk pueden cambiar: valide cada actualización en preproducción antes de desplegar.
 
 ```
 Usuario envía ──▶ Talk ──▶ [antes de guardar] GSI Talk Guard
@@ -30,7 +30,7 @@ Usuario envía ──▶ Talk ──▶ [antes de guardar] GSI Talk Guard
 | `appinfo/info.xml` | Manifiesto de la app |
 | `config/reglas.json` | Reglas predeterminadas (todas en modo `alertar`) |
 | `lib/` | Código de la app |
-| `lib/Controller`, `lib/Settings`, `templates`, `js`, `css`, `img` | Página de administración (1.4.0) |
+| `lib/Controller`, `lib/Settings`, `templates`, `js`, `css`, `img` | Página de administración de alertas y configuración |
 | `pruebas/prueba_humo.sh` | Prueba automática contra un Nextcloud real |
 
 ## Interfaz web
@@ -65,24 +65,25 @@ Para que analistas de la GSI usen la página **sin ser administradores de Nextcl
 
 Los miembros del grupo verán solo esta sección de la administración; el resto les devuelve «acceso denegado».
 
-## Actualizar desde la versión 1.0.0
+## Actualizar desde una versión anterior
 
 La configuración, las reglas, las claves y las evidencias están en la base de datos y se conservan.
 
 ```bash
 NC=nextcloud-app-1
 occ() { docker exec -u www-data "$NC" php occ "$@"; }
-cd /tmp && rm -rf gsi_talk_guard && tar -xzf gsi_talk_guard-1.4.0.tar.gz
+VERSION=X.Y.Z  # sustituya por la versión del paquete
+cd /tmp && tar -xzf "gsi_talk_guard-$VERSION.tar.gz"
 occ maintenance:mode --on
 docker exec "$NC" rm -rf /var/www/html/custom_apps/gsi_talk_guard
 docker cp gsi_talk_guard "$NC":/var/www/html/custom_apps/
 docker exec "$NC" chown -R www-data:www-data /var/www/html/custom_apps/gsi_talk_guard
 occ upgrade
 occ maintenance:mode --off
-occ app:list | grep gsi_talk_guard     # debe decir 1.4.0
+occ app:list | grep gsi_talk_guard     # confirme la versión instalada
 ```
 
-El modo de mantenimiento evita que alguien envíe mensajes en los segundos en que la carpeta se reemplaza.
+Este es un resumen del reemplazo de la app, no sustituye al [procedimiento de actualización](../../docs/ACTUALIZACION.md), que incluye comprobación SHA-256, respaldos, worker opcional, verificaciones y reversión. El modo de mantenimiento evita envíos mientras se reemplaza la carpeta.
 
 ## 1. Instalación (Docker)
 
@@ -117,7 +118,7 @@ Cada par tiene un ID. Las alertas con evidencia incluyen ese ID y el comando de 
 | Opción | Comando | Por omisión |
 | --- | --- | --- |
 | Limitar a usuarios del piloto | `occ config:app:set gsi_talk_guard usuarios_piloto --value="ana.perez,luis.rojas"` | Todos |
-| Correo a la GSI | `occ config:app:set gsi_talk_guard correo_para --value="seguridad@imcp.gob.ve"` | Desactivado |
+| Correo a la GSI | `occ config:app:set gsi_talk_guard correo_para --value="infosec@imcpbdc.com.ve"` | Desactivado |
 | Severidad mínima del correo | `occ config:app:set gsi_talk_guard severidad_minima_correo --value=alta` | `media` |
 | Avisar al autor | `occ config:app:set gsi_talk_guard avisar_usuario --value=no` | Sí |
 | Ruta del archivo de alertas | `occ config:app:set gsi_talk_guard archivo_alertas --value=/ruta/alertas.jsonl` | `<datadirectory>/gsi_talk_guard/alertas.jsonl` |
